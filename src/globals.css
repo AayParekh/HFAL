@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.55 0.22 27);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --banner: oklch(0.93 0.1 95);
+  --banner-foreground: oklch(0.25 0.05 95);
+
+  /*
+   * Grade palette: Okabe-Ito colors, chosen to stay distinguishable under the common forms of
+   * color blindness (blue -> light blue -> yellow -> orange -> dark vermillion, which also differ in
+   * lightness). The badge always shows the letter, so color is never the only signal.
+   * Foreground colors give at least 4.5:1 contrast on their background.
+   */
+  --grade-a: #0072b2;
+  --grade-a-foreground: #ffffff;
+  --grade-b: #56b4e9;
+  --grade-b-foreground: #0a0a0a;
+  --grade-c: #f0e442;
+  --grade-c-foreground: #0a0a0a;
+  --grade-d: #e69f00;
+  --grade-d-foreground: #0a0a0a;
+  --grade-f: #a63a00;
+  --grade-f-foreground: #ffffff;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --banner: oklch(0.35 0.07 95);
+  --banner-foreground: oklch(0.95 0.05 95);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-banner: var(--banner);
+  --color-banner-foreground: var(--banner-foreground);
+  --color-grade-a: var(--grade-a);
+  --color-grade-a-foreground: var(--grade-a-foreground);
+  --color-grade-b: var(--grade-b);
+  --color-grade-b-foreground: var(--grade-b-foreground);
+  --color-grade-c: var(--grade-c);
+  --color-grade-c-foreground: var(--grade-c-foreground);
+  --color-grade-d: var(--grade-d);
+  --color-grade-d-foreground: var(--grade-d-foreground);
+  --color-grade-f: var(--grade-f);
+  --color-grade-f-foreground: var(--grade-f-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
