@@ -1,0 +1,33 @@
+# Grading rubric. Applied by plain Python in src/hfal/grade.py (no LLM).
+# Source: CSSNY's compliance grades.
+#
+#   Compliant      = compliant in all sections of the audit.
+#   Non-compliant  = one or more sections of the audit are non-compliant.
+#
+# An "error" is one criterion answered NO (verified quote), counted across all sections.
+# YES and N/A are not errors. UNCLEAR / NOT_FOUND / unverified answers are not errors either:
+# they make the grade "incomplete" (no letter) until a person resolves them.
+# All criteria count equally; there are no weights.
+
+# Letter by number of errors, checked top to bottom. First band with errors <= max_errors wins.
+bands:
+  A: {max_errors: 0}     # fully compliant
+  B: {max_errors: 3}     # 1 to 3 errors
+  C: {max_errors: 6}     # 4 to 6 errors
+  D: {max_errors: 9}     # 7 to 9 errors
+  F: {max_errors: null}  # 10+ errors (no upper limit)
+
+# Any NO on one of these criteria is an automatic F, whatever the error count.
+# A NO here still counts as one error in the total.
+# IDs must exist in config/criteria.yaml (the grader raises if one is missing).
+automatic_fail:
+  - application_posted         # "No application posted"
+  - entire_uniform_application # "no uniform application"
+  - policy_statement_posted    # "No policy statement posted"
+
+# Asked and reported, never counted: no error, no automatic fail, and an UNCLEAR / NOT_FOUND here does not
+# make the grade incomplete. (Matches CSSNY's sheet: its error count leaves Languages out.)
+# Reported lists that are not criteria at all (languages offered, Primary Service Area counties) come from
+# the model's "reported" output, see src/hfal/ask.py.
+report_only:
+  - languages_available

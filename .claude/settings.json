@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./golden/**)",
+      "Read(./data/sample*)",
+      "Edit(./golden/**)",
+      "Edit(./data/sample*)",
+      "Bash(cat golden/*)",
+      "Bash(head golden/*)",
+      "Bash(tail golden/*)",
+      "Bash(less golden/*)",
+      "Bash(grep * golden/*)",
+      "Bash(cat data/sample*)",
+      "Bash(head data/sample*)",
+      "Bash(tail data/sample*)",
+      "Bash(grep * data/sample*)"
+    ]
+  }
+}

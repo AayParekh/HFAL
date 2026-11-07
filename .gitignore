@@ -1,0 +1,41 @@
+# CSSNY's work: public information, but not ours to redistribute (see CLAUDE.md, DATA HANDLING)
+golden/
+data/sample*
+# Seeded from the golden sheet's links; rebuild with scripts/sources_from_golden.py
+data/sources.csv
+
+# Pipeline data (large, reproducible)
+data/raw/
+data/text/
+data/tags/
+data/cache/
+
+# Model output. diff.csv puts golden labels next to hospital names.
+runs/
+
+# Local environment and tooling
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.claude/settings.local.json
+
+# Discovery output (rebuild with: uv run hfal discover)
+data/discovered/
+
+# Identity table from the golden sheet; files dropped in by hand
+data/hospitals.csv
+data/manual/
+
+# Review sheets (hospital names from the golden sheet; your answers)
+data/review/
+data/attrition.csv
+
+# CSSNY's data dictionary and everything generated from it (get criteria_raw.csv from CSSNY, then run
+# scripts/criteria_from_csv.py)
+config/criteria_raw.csv
+config/criteria.yaml
+config/criteria_columns.yaml
+
+# Deliberate exclusions (hospital ids of the sample)
+data/exclusions.yaml

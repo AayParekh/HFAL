@@ -1,0 +1,24 @@
+# All model access goes through hfal/ask.py::call_model. Switch provider here (see README, "Model providers").
+model:
+  provider: anthropic          # anthropic | bedrock
+  name: claude-sonnet-5-5      # Anthropic API model name (used when provider: anthropic)
+  # Used when provider: bedrock. Copy the model / inference profile ID from the Bedrock console
+  # (Model catalog); newer models need a regional ID such as us.anthropic.<model>.
+  bedrock_id: "<set from the Bedrock console>"
+  aws_region: us-east-1
+  aws_profile: null            # optional: a named profile (e.g. an SSO profile). Otherwise env vars:
+                               # AWS_BEARER_TOKEN_BEDROCK, or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+  temperature: null            # not sent unless set: the SDK has no temperature argument (sent via extra_body if set;
+                               # the API may reject it for some models). Reproducibility = response cache + logged ids.
+  max_output_tokens: 8000
+
+prompt_version: v2   # v2: reported lists (languages, PSA counties); v1: no_means and guidance
+
+# Guard: if a hospital's combined text exceeds this, `hfal ask` stops with an
+# error instead of silently truncating. Filter by doc type or add retrieval then.
+max_input_chars: 600000
+
+fetch:
+  delay_seconds: 1.5
+  timeout_seconds: 30
+  respect_robots: true

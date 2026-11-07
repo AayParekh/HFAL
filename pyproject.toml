@@ -1,0 +1,29 @@
+[project]
+name = "hfal-monitor"
+version = "0.1.0"
+description = "Monitor NY hospital compliance with the Hospital Financial Assistance Law (HFAL)"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic[bedrock]>=0.40",
+    "beautifulsoup4>=4.12",
+    "httpx>=0.27",
+    "pymupdf>=1.24",
+    "pyyaml>=6.0",
+    "truststore>=0.10.5",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+hfal = "hfal.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hfal"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

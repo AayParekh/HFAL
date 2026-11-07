@@ -1,0 +1,1 @@
+"""HFAL compliance monitor."""

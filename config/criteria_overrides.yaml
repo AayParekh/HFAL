@@ -1,0 +1,50 @@
+# The only hand-written input to scripts/criteria_from_csv.py besides criteria_raw.csv.
+# Everything else (which rows are criteria, ids, sections, YES/NO text) is derived from the CSV.
+
+# Expected number of criteria; the script warns if the CSV yields a different count.
+expected_count: 18
+
+# doc_types for each section label in the CSV. "For now": Materials on Website criteria can be
+# answered from any posted document; Application and Policy Summary criteria from that document type.
+sections:
+  MATERIALS ON WEBSITE: [fap_policy, plain_language_summary, application_form]
+  APPLICATION: [application_form]
+  POLICY SUMMARY: [plain_language_summary]
+
+# Keyed by Excel column letter. `title` must match the start of the CSV title (guards against shifted rows).
+#   question   Replaces the question the script would derive (the CSV's own question line, else the title + "?").
+#              These were drafted by Claude where the CSV had no question. REVIEW AGAINST CSSNY'S WORDING.
+#   yes_means / no_means   Required when the CSV row has no "YES =" / "NO =" lines but is still a criterion.
+overrides:
+  V:
+    title: Primary Service Area boundaries compliant
+    question: Is the hospital's Primary Service Area defined in a way that complies with the 2007 guidelines, wherever it is listed?
+  W:
+    title: No time limit to submit
+    question: Is the hospital free of any time limit for submitting a financial assistance application?
+  Y:
+    title: No evidence of asset checks
+    question: Is there no evidence of asset checks (for example, a request for bank account statements)?
+  Z:
+    title: No mention of immigration status as a barrier
+    question: Do the materials avoid excluding people from financial assistance based on immigration status?
+  AB:
+    title: Languages available
+    question: Is the financial assistance application available in languages other than English?
+    yes_means: the materials show the application is available in one or more non-English languages (list them in the reason)
+    no_means: the materials indicate the application is available only in English
+  AE:
+    title: Contact information included in application
+    question: Is contact information for help with the application clearly listed on the application?
+  AG:
+    title: Income & discount tables included in application
+    question: Does the application directly include tables showing the income levels and the corresponding discounts on care?
+  AI:
+    title: Max FPL
+    question: Does the hospital's financial assistance cover patients with income up to at least 400% of the federal poverty level?
+  AJ:
+    title: Installments capped at 5% of monthly income
+    question: Does the application explicitly state that installment payments are capped at 5% of gross monthly income?
+  AL:
+    title: Primary Service Area listed in summary
+    question: Does the policy summary list the Primary Service Area?
