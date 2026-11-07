@@ -177,3 +177,9 @@ Lives in [PLAN.md](PLAN.md) (day-by-day, with checkboxes). Do tasks in order, on
 - Keep dependencies minimal. Add tests for anything that affects grading or scoring.
 - Log model, prompt_version and run_id in every output.
 - Update this file when a decision changes.
+- **Commit identity:** the owner's full name and private email must not appear on GitHub; their GitHub handle may.
+  This repo's local git config (committer) is `AayParekh <56261459+AayParekh@users.noreply.github.com>` (GitHub's
+  noreply address). Never set the owner's full name or a private email, in config, commits or files. Commits Claude
+  writes use `--author="Claude <noreply@anthropic.com>"` so Claude shows up in the repository's Contributors
+  sidebar, and still end with a `Co-Authored-By` trailer. GitHub's "block pushes that expose my email" setting
+  stays on.
