@@ -89,7 +89,7 @@ export function FacilitiesTable({ rows, isLoading, error, onRetry, selectedPfi, 
         grades={grades}
         onGradesChange={(value) => { setGrades(value); goToFirstPage() }}
       />
-      <div className="rounded-md border" aria-busy={isLoading}>
+      <div className="rounded-md border border-border" aria-busy={isLoading}>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (

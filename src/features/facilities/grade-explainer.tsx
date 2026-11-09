@@ -32,12 +32,6 @@ export function GradeExplainer({ grade }: { grade: FacilityGrade }) {
           </AlertDescription>
         </Alert>
       )}
-      <p className="text-muted-foreground">
-        {grade.unresolved_count === 0
-          ? 'No unresolved criteria.'
-          : `${pluralize(grade.unresolved_count, 'criterion', 'criteria')} unresolved (needs review or not yet assessed). These are not counted as errors, so this grade is provisional and could change.`}
-        {grade.not_applicable_count > 0 && ` ${pluralize(grade.not_applicable_count, 'criterion', 'criteria')} marked not applicable.`}
-      </p>
     </div>
   )
 }

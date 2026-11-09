@@ -25,7 +25,7 @@ function SheetContent({ className, children, ...props }: React.ComponentProps<ty
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex h-full w-3/4 flex-col gap-4 border-l bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:duration-500 data-[state=open]:slide-in-from-right sm:max-w-sm',
+          'fixed inset-y-0 right-0 z-50 flex h-full w-3/4 flex-col gap-4 border-l border-border bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:duration-500 data-[state=open]:slide-in-from-right sm:max-w-sm',
           className,
         )}
         {...props}

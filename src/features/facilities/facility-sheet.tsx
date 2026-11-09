@@ -49,13 +49,13 @@ export function FacilitySheet({ pfi, row, onClose, onCloseAutoFocus }: FacilityS
   return (
     <Sheet open={pfi !== null} onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl" onCloseAutoFocus={onCloseAutoFocus}>
-        <SheetHeader className="gap-3 border-b p-6 pr-12">
+        <SheetHeader className="gap-3 border-b border-border p-6 pr-12">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <SheetTitle className="text-lg">{title}</SheetTitle>
               <SheetDescription>{address}</SheetDescription>
             </div>
-            {grade && <GradeBadge grade={grade.grade} isProvisional={grade.is_provisional} size="lg" />}
+            {grade && <GradeBadge grade={grade.grade} size="lg" />}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             {faPageUrl && (

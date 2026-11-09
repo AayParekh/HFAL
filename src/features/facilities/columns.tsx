@@ -82,7 +82,7 @@ export const facilityColumns: ColumnDef<FacilityRow>[] = [
     id: 'grade',
     accessorFn: (row) => row.grade.grade,
     header: ({ column }) => <SortableHeader column={column} label="Grade" />,
-    cell: ({ row }) => <GradeBadge grade={row.original.grade.grade} isProvisional={row.original.grade.is_provisional} />,
+    cell: ({ row }) => <GradeBadge grade={row.original.grade.grade} />,
     sortingFn: sortByGrade,
     filterFn: filterByGrades,
   },

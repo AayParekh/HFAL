@@ -3,7 +3,7 @@ import { MapPin } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { FacilityRow } from '@/lib/facility-rows'
-import { formatDate, pluralize } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { summarizeRows } from '@/lib/summary'
 import { GradeDistributionChart } from './grade-distribution-chart'
 
@@ -41,7 +41,6 @@ export function SummaryCards({ rows, asOf, isLoading }: SummaryCardsProps) {
           {summary && !isLoading ? (
             <>
               <GradeDistributionChart distribution={summary.distribution} />
-              <CardDescription>{pluralize(summary.provisionalCount, 'grade')} provisional</CardDescription>
             </>
           ) : (
             <Skeleton className="h-28 w-full" />

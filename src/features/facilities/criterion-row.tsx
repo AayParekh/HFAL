@@ -20,36 +20,36 @@ export function CriterionRow({ criterion, assessment, documents }: CriterionRowP
   const measured = assessment ? formatMeasuredValue(criterion.value_type, assessment.measured_value) : null
 
   return (
-    <li className="space-y-2 py-3">
-      <div className="flex items-start justify-between gap-3">
+    <li className="flex items-stretch gap-3 py-3">
+      <div className="min-w-0 flex-1 space-y-2">
         <p className="text-sm font-medium">{copy.question}</p>
-        <StatusBadge result={assessment?.result ?? null} />
+        {(measured || assessment?.is_judgment_call) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {measured && (
+              <span className="text-muted-foreground">
+                Measured value: <span className="font-medium text-foreground">{measured}</span>
+              </span>
+            )}
+            {assessment?.is_judgment_call && <Badge variant="secondary">Judgment call</Badge>}
+          </div>
+        )}
+        {assessment?.rationale && (
+          <p className="text-xs text-muted-foreground">
+            Reviewer note: <span className="text-foreground">{assessment.rationale}</span>
+          </p>
+        )}
+        <SourceInfo assessment={assessment} document={document} />
+        {assessment?.result === 'fail' && (
+          <details className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+            <summary className="cursor-pointer rounded-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+              What the law requires
+            </summary>
+            <p className="mt-2">{copy.explanation}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Draft wording, pending CSSNY legal review.</p>
+          </details>
+        )}
       </div>
-      {(measured || assessment?.is_judgment_call) && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          {measured && (
-            <span className="text-muted-foreground">
-              Measured value: <span className="font-medium text-foreground">{measured}</span>
-            </span>
-          )}
-          {assessment?.is_judgment_call && <Badge variant="secondary">Judgment call</Badge>}
-        </div>
-      )}
-      {assessment?.rationale && (
-        <p className="text-xs text-muted-foreground">
-          Reviewer note: <span className="text-foreground">{assessment.rationale}</span>
-        </p>
-      )}
-      <SourceInfo assessment={assessment} document={document} />
-      {assessment?.result === 'fail' && (
-        <details className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-          <summary className="cursor-pointer rounded-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-            What the law requires
-          </summary>
-          <p className="mt-2">{copy.explanation}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Draft wording, pending CSSNY legal review.</p>
-        </details>
-      )}
+      <StatusBadge result={assessment?.result ?? null} />
     </li>
   )
 }
