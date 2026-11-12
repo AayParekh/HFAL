@@ -1,26 +1,34 @@
-"""Attrition table: how many hospitals survive each pipeline stage, and why the others dropped out.
+"""Attrition table and working set: which hospitals survive each pipeline stage, and why the others drop out.
 
     uv run python scripts/attrition.py [--run RUN_ID] [--update-plan]
+
+Exclusion policy (PLAN.md): a hospital is left out, not worked around, when any of these holds:
+  - robots.txt forbids fetching its landing page or one of its selected documents
+  - a bot check / access-denied response (401, 403, 429, or a landing page that serves no links)
+  - a broken link: its landing page or a selected document does not download, or nothing is found there
+  - a selected document is a scan that needs OCR
+  - it has no landing link in the hospital table
 
 Stages, in order (a hospital stops at the first one it fails):
   1. in the hospital table (data/hospitals.csv), by set (dev / eval)
   2. has a landing_url
-  3. landing page fetched (status ok in the latest manifest)
-  4. discovery selected at least one document
-  5. at least one document's text extracted (PDF / Word)
-  6. not excluded on purpose (data/exclusions.yaml, git-ignored)
-  7. asked in run RUN_ID            (only with --run)
-  8. graded with a letter (complete) (only with --run)
+  3. landing page fetched
+  4. documents found (discovery selected at least one PDF / Word document)
+  5. all selected documents downloaded
+  6. no selected document needs OCR
+  7. not excluded by hand (data/exclusions.yaml, git-ignored)            <- the working set
+  8. asked in run RUN_ID                                                  (only with --run)
+  9. graded with a letter (complete)                                      (only with --run)
 
-Writes data/attrition.csv (git-ignored; one row per hospital: last stage passed, why it stopped) and prints a
-markdown table of COUNTS and reasons only. --update-plan rewrites the table between the attrition markers in
-PLAN.md. Hospital ids never go into the table, so PLAN.md can be committed. Deterministic for the same files.
+Writes (git-ignored): data/attrition.csv (one row per hospital: last stage passed, why it stopped) and
+data/working_set.csv (hospitals that passed stages 1-7; `hfal ask` and the monthly check use these).
+Prints a markdown table of COUNTS and reasons only. --update-plan rewrites the table between the attrition
+markers in PLAN.md. Hospital ids never go into the table, so PLAN.md can be committed. Deterministic.
 """
 
 import argparse
 import csv
 import json
-import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -28,44 +36,13 @@ from pathlib import Path
 import yaml
 
 from hfal import paths
-from hfal.fetch import latest_manifest
+from hfal.attrition import (CATEGORY_TEXT, STAGES, WORKING_STAGE, classify, failure_category,  # noqa: F401
+                            full_manifest, ocr_flags, worst)
 from hfal.grade import grade_hospital
-from hfal.sources import LANDING_LABEL
 
 ROOT = Path(__file__).resolve().parents[1]
-STAGES = ["in hospital table", "has landing_url", "landing page fetched", "documents discovered",
-          "document text extracted", "not excluded on purpose", "asked", "graded (letter issued)"]
 START, END = "<!-- attrition:start -->", "<!-- attrition:end -->"
-
-
-def stage_of(h: dict, excluded: dict, run_dir: Path | None, rubric: dict, ids: list[str]) -> tuple[int, str]:
-    """(number of stages passed, reason it stopped)."""
-    hid = h["hospital_id"]
-    if not h.get("landing_url", "").strip():
-        return 1, "no landing_url in the hospital table"
-    manifest = latest_manifest(hid)
-    if not any(i.get("label") == LANDING_LABEL for i in manifest):
-        return 2, "landing page not fetched (never run, robots.txt, or error)"
-    disc = paths.DATA / "discovered" / f"{hid}.json"
-    if not disc.exists():
-        return 3, "discovery not run"
-    res = json.loads(disc.read_text(encoding="utf-8"))
-    if not any(c["selected"] and c["kind"] in ("pdf", "docx") for c in res["candidates"]):
-        return 3, "no documents selected" + (" (bot check?)" if res.get("warnings") else "")
-    if not any(i["ext"] in ("pdf", "docx") and (paths.TEXT / hid / f"{i['sha8']}.json").exists() for i in manifest):
-        return 4, "documents not downloaded (robots.txt / HTTP error)"
-    if hid in excluded:
-        return 5, f"excluded: {excluded[hid]}"
-    if run_dir is None:
-        return 6, ""
-    f = run_dir / f"{hid}.json"
-    if not f.exists():
-        return 6, "not asked in this run"
-    recs = {a["criterion_id"]: a for a in json.loads(f.read_text(encoding="utf-8"))["answers"]}
-    g = grade_hospital(recs, ids, rubric)
-    if g["status"] != "graded":
-        return 7, f"incomplete: {len(g['needs_review'])} criteria need review"
-    return 8, ""
+# The rule itself (classify and the categories) lives in src/hfal/attrition.py, shared with `hfal monitor`.
 
 
 def main() -> int:
@@ -80,30 +57,57 @@ def main() -> int:
     excl = (yaml.safe_load(excl_file.read_text(encoding="utf-8")) or {}) if excl_file.exists() else {}
     excluded = {str(e["hospital_id"]): e["reason"] for e in excl.get("exclusions") or []}
     run_dir = paths.RUNS / args.run if args.run else None
-    rubric = paths.rubric()
-    ids = [c["id"] for c in paths.criteria()]
-    n_stages = len(STAGES) if run_dir else 6
+    rubric, ids = (paths.rubric(), [c["id"] for c in paths.criteria()]) if run_dir else (None, None)
+    n_stages = len(STAGES) if run_dir else WORKING_STAGE
+    too_large = set()       # hospitals `hfal ask` skipped because their prompt was too large for one call
+    if run_dir and (run_dir / "skipped.json").exists():
+        skipped = json.loads((run_dir / "skipped.json").read_text(encoding="utf-8"))
+        too_large = {str(x["hospital_id"]) for x in skipped.get("hospitals", [])}
 
     rows = []
     for h in table:
-        passed, why = stage_of(h, excluded, run_dir, rubric, ids)
-        rows.append({"hospital_id": h["hospital_id"], "set": h.get("set", ""), "stages_passed": passed,
-                     "last_stage": STAGES[passed - 1], "stopped_because": why})
+        hid = h["hospital_id"]
+        entries = full_manifest(hid)
+        disc_file = paths.DATA / "discovered" / f"{hid}.json"
+        disc = json.loads(disc_file.read_text(encoding="utf-8")) if disc_file.exists() else None
+        ocr = ocr_flags(hid, entries)
+        outcome = None
+        if run_dir:
+            rec = run_dir / f"{hid}.json"
+            if hid in too_large:
+                outcome = "too_large"
+            elif not rec.exists():
+                outcome = "not_asked"
+            else:
+                answers = {a["criterion_id"]: a for a in json.loads(rec.read_text(encoding="utf-8"))["answers"]}
+                outcome = "graded" if grade_hospital(answers, ids, rubric)["status"] == "graded" else "incomplete"
+        passed, cat = classify(h, entries, disc, ocr, excluded, outcome)
+        rows.append({"hospital_id": hid, "set": h.get("set", ""), "stages_passed": passed,
+                     "last_stage": STAGES[passed - 1], "stopped_because": CATEGORY_TEXT.get(cat, ""),
+                     "category": cat})
+
     with open(paths.DATA / "attrition.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
+    working = [r for r in rows if r["stages_passed"] >= WORKING_STAGE]
+    with open(paths.DATA / "working_set.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["hospital_id", "set"], lineterminator="\n")
+        w.writeheader()
+        w.writerows({"hospital_id": r["hospital_id"], "set": r["set"]} for r in working)
 
     lines = ["| Stage | Dev left | Dev lost here (count: why) | Eval left |", "|---|---|---|---|"]
     for i in range(n_stages):
-        dev_left = [r for r in rows if r["set"] == "dev" and r["stages_passed"] > i]
+        dev_left = sum(r["set"] == "dev" and r["stages_passed"] > i for r in rows)
         eval_left = sum(r["set"] == "eval" and r["stages_passed"] > i for r in rows)
         lost = [r for r in rows if r["set"] == "dev" and r["stages_passed"] == i]
-        reasons = Counter(re.sub(r"\s*\(.*\)$", "", r["stopped_because"].split(":")[0]) or "-" for r in lost)
+        reasons = Counter(r["stopped_because"] or "-" for r in lost)
         why = "; ".join(f"{n}: {w}" for w, n in sorted(reasons.items())) if i else ""
-        lines.append(f"| {i + 1}. {STAGES[i]} | {len(dev_left)} | {why} | {eval_left} |")
+        lines.append(f"| {i + 1}. {STAGES[i]} | {dev_left} | {why} | {eval_left} |")
     table_md = "\n".join(lines)
     print(table_md)
+    print(f"working set: {sum(r['set'] == 'dev' for r in working)} dev, {sum(r['set'] == 'eval' for r in working)} eval"
+          f" -> {paths.DATA / 'working_set.csv'}")
 
     if args.update_plan:
         plan = ROOT / "PLAN.md"

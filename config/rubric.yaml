@@ -5,9 +5,14 @@
 #   Non-compliant  = one or more sections of the audit are non-compliant.
 #
 # An "error" is one criterion answered NO (verified quote), counted across all sections.
-# YES and N/A are not errors. UNCLEAR / NOT_FOUND / unverified answers are not errors either:
-# they make the grade "incomplete" (no letter) until a person resolves them.
-# All criteria count equally; there are no weights.
+# YES and N/A are not errors. All criteria count equally; there are no weights.
+#
+# Open items (UNCLEAR / NOT_FOUND / unverified answers). Decided Nov 11 by the owner: for the LETTER they count as NO,
+# so every hospital gets a letter. The answer itself stays UNCLEAR / NOT_FOUND (it is never turned into NO in the
+# results), the grade's status is "provisional" while any is open, and the open items are listed for a person to
+# check. A NOT_FOUND on application_posted or entire_uniform_application therefore gives an automatic F. Set to false
+# to go back to the earlier rule: no letter ("incomplete") until a person resolves them.
+open_items_count_as_no: true
 
 # Letter by number of errors, checked top to bottom. First band with errors <= max_errors wins.
 bands:
@@ -20,10 +25,15 @@ bands:
 # Any NO on one of these criteria is an automatic F, whatever the error count.
 # A NO here still counts as one error in the total.
 # IDs must exist in config/criteria.yaml (the grader raises if one is missing).
+#
+# "No policy statement posted" is NOT in this list. CSSNY's written rubric calls it an automatic F, but their
+# sheet never applies it ("Automatic Fail?" matches "no application OR not the ENTIRE uniform application" for
+# 211/211 hospitals), and without it our letters match theirs 211/211 (194/211 with it). Decided provisionally
+# to follow the sheet, so letter agreement measures the model rather than a rubric difference. To restore the
+# written rule, add policy_statement_posted below. Question for CSSNY: PLAN.md "Open decisions" 2.
 automatic_fail:
   - application_posted         # "No application posted"
   - entire_uniform_application # "no uniform application"
-  - policy_statement_posted    # "No policy statement posted"
 
 # Asked and reported, never counted: no error, no automatic fail, and an UNCLEAR / NOT_FOUND here does not
 # make the grade incomplete. (Matches CSSNY's sheet: its error count leaves Languages out.)

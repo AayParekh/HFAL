@@ -35,3 +35,17 @@ def verify_quote(quote: str, pages: list[str]) -> tuple[bool, int | None]:
             return True, i
     joined = normalize(" ".join(pages))
     return (q in joined), None
+
+
+def find_quote(quote: str, source_doc: str | None, docs: list[dict]) -> tuple[str | None, int | None]:
+    """Look for a quote in its cited document, or, if that id is not one of the documents, in every document.
+
+    Returns (sha8 of the document it was found in, page) or (None, None) when it is not found verbatim.
+    A quote that cites a real document but is not in it is NOT looked for elsewhere: a quote put on the wrong
+    document is not verified."""
+    cited = next((d for d in docs if d["sha8"] == source_doc), None)
+    for d in ([cited] if cited else docs):
+        ok, pg = verify_quote(quote, d["pages"])
+        if ok:
+            return d["sha8"], pg
+    return None, None

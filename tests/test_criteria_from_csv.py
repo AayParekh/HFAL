@@ -95,9 +95,14 @@ def test_generated_files_match_a_fresh_build():
     c = yaml.safe_load((ROOT / "config" / "criteria_overrides.yaml").read_text(encoding="utf-8"))
     crit, inv, errors, _ = conv.build(rows, c)
     assert not errors
-    on_disk = yaml.safe_load((ROOT / "config" / "criteria.yaml").read_text(encoding="utf-8"))["criteria"]
+    disk = yaml.safe_load((ROOT / "config" / "criteria.yaml").read_text(encoding="utf-8"))
     cols = yaml.safe_load((ROOT / "config" / "criteria_columns.yaml").read_text(encoding="utf-8"))["columns"]
-    assert on_disk == crit and cols == inv, "run: uv run python scripts/criteria_from_csv.py"
+    assert disk["criteria"] == crit and cols == inv, "run: uv run python scripts/criteria_from_csv.py"
+    assert disk.get("reading_rules", "") == conv.squash_lines(c.get("reading_rules") or ""), "run: uv run python scripts/criteria_from_csv.py"
+    assert disk.get("reference_form") == c.get("reference_form"), "run: uv run python scripts/criteria_from_csv.py"
+    assert disk.get("reference_fpl") == c.get("reference_fpl"), "run: uv run python scripts/criteria_from_csv.py"
+    if c.get("reference_form"):
+        assert (ROOT / "config" / c["reference_form"]).exists()
 
 
 @needs_cssny_files
@@ -116,3 +121,20 @@ def test_prompt_includes_no_means_and_guidance():
         {"id": "x", "question": "Q?", "guidance": "G", "yes_means": "Y", "no_means": "N"}
     )
     assert "Background: G" in text and "YES means: Y" in text and "NO means: N" in text
+
+
+def test_override_can_reword_a_csv_defined_criterion_and_remove_text():
+    rows = [["SEC", "R", "Max FPL", "Q?\n-   By law.\nYES = the number in this column is >=400%\nNO = the number is <400%"]]
+    ov = {"R": {"title": "Max FPL", "yes_means": "income up to at least 400% FPL is covered", "guidance": ""}}
+    crit, _, errors, notes = conv.build(rows, conf({"SEC": ["fap_policy"]}, ov))
+    assert not errors
+    assert crit[0]["yes_means"] == "income up to at least 400% FPL is covered"
+    assert crit[0]["no_means"] == "the number is <400%"                    # not overridden: unchanged
+    assert "guidance" not in crit[0]                                       # "" removed it
+    assert any("reworded" in n and "yes_means" in n and "guidance" in n for n in notes)
+
+
+def test_without_overrides_the_csv_text_is_used_unchanged():
+    rows = [["SEC", "R", "Max FPL", "Q?\n-   By law.\nYES = a\nNO = b"]]
+    crit, _, _, notes = conv.build(rows, conf({"SEC": ["fap_policy"]}, {"R": {"title": "Max FPL"}}))
+    assert (crit[0]["guidance"], crit[0]["yes_means"]) == ("By law.", "a") and not any("reworded" in n for n in notes)

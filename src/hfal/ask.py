@@ -14,9 +14,9 @@ import json
 import re
 from datetime import datetime, timezone
 
-from . import paths
+from . import consistency, formcheck, fpl, maxfpl, paths, usage
 from .schema import ANSWERS, NOT_FOUND, UNCLEAR
-from .verify import verify_quote
+from .verify import find_quote
 
 SYSTEM = """You audit a New York hospital's financial assistance materials against specific criteria.
 Rules:
@@ -38,57 +38,82 @@ Also report two lists. They are not graded; report only what the documents state
   per county per document, with a quote copied EXACTLY from that document that names the county.
 Use empty lists when the documents state nothing."""
 
-TOOL = {
-    "name": "record_answers",
-    "description": "Record one answer per criterion.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "answers": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "criterion_id": {"type": "string"},
-                        "answer": {"type": "string", "enum": ANSWERS},
-                        "quote": {"type": "string"},
-                        "source_doc": {"type": "string"},
-                        "page": {"type": ["integer", "null"]},
-                        "reason": {"type": "string"},
-                    },
-                    "required": ["criterion_id", "answer", "quote", "source_doc", "page", "reason"],
-                },
-            },
-            "languages": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "language": {"type": "string"},
-                        "source_doc": {"type": "string"},
-                        "page": {"type": ["integer", "null"]},
-                        "quote": {"type": "string"},
-                    },
-                    "required": ["language", "source_doc", "page", "quote"],
-                },
-            },
-            "psa_counties": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "county": {"type": "string"},
-                        "source_doc": {"type": "string"},
-                        "page": {"type": ["integer", "null"]},
-                        "quote": {"type": "string"},
-                    },
-                    "required": ["county", "source_doc", "page", "quote"],
-                },
-            },
-        },
-        "required": ["answers", "languages", "psa_counties"],
-    },
-}
+PAGE = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+
+
+def _obj(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
+# The reply format. Sent as output_config.format (structured outputs): the API guarantees the reply is valid JSON
+# in this shape. Forced tool use is not used: claude-sonnet-5-5 rejects it with a 400.
+SCHEMA = _obj({
+    "answers": {"type": "array", "items": _obj({
+        "criterion_id": {"type": "string"},
+        "answer": {"type": "string", "enum": ANSWERS},
+        "quote": {"type": "string"},
+        "source_doc": {"type": "string"},
+        "page": PAGE,
+        "reason": {"type": "string"},
+    })},
+    "languages": {"type": "array", "items": _obj({
+        "language": {"type": "string"}, "source_doc": {"type": "string"}, "page": PAGE, "quote": {"type": "string"},
+    })},
+    "psa_counties": {"type": "array", "items": _obj({
+        "county": {"type": "string"}, "source_doc": {"type": "string"}, "page": PAGE, "quote": {"type": "string"},
+    })},
+})
+
+
+def schema_for(points: list[dict]) -> dict:
+    """The reply format. With consistency points (criteria file, prompt v7 on) it adds the consistency_points list;
+    without them it is SCHEMA unchanged, so earlier prompt versions send exactly what they always sent."""
+    if not points:
+        return SCHEMA
+    item = _obj({
+        "point": {"type": "string", "enum": [p["id"] for p in points]},
+        "status": {"type": "string", "enum": consistency.STATUSES},
+        "doc_a": {"type": "string"}, "page_a": PAGE, "quote_a": {"type": "string"},
+        "doc_b": {"type": "string"}, "page_b": PAGE, "quote_b": {"type": "string"},
+        "reason": {"type": "string"},
+    })
+    return _obj({**SCHEMA["properties"], "consistency_points": {"type": "array", "items": item}})
+
+
+class TooLarge(RuntimeError):
+    """A hospital's prompt would use more of the context window than settings.yaml allows. Never truncated."""
+
+    def __init__(self, hospital_id: str, est_tokens: int, limit_tokens: int):
+        super().__init__(f"{hospital_id}: about {est_tokens} tokens exceeds the limit of {limit_tokens} "
+                         f"(max_input_share of context_window_tokens); not asked, not truncated")
+        self.item = {"hospital_id": hospital_id, "est_tokens": est_tokens, "limit_tokens": limit_tokens}
+
+
+def input_limit_tokens(cfg_all: dict) -> int:
+    return int(cfg_all["context_window_tokens"] * cfg_all["max_input_share"])
+
+
+def estimate_tokens(chars: int, cfg_all: dict) -> int:
+    """Conservative token estimate for the size guard (chars_per_token is set below the usual 4 on purpose)."""
+    return -(-chars // cfg_all["chars_per_token"])
+
+
+def reference_block() -> str:
+    """The reference material for every hospital: the state's blank application in a <reference_form> block and the
+    official poverty figures in a <reference_fpl> block. Each is empty when the criteria file does not name it."""
+    form = paths.reference_form()
+    blocks = ['<reference_form name="New York State Uniform Hospital Financial Assistance Application, blank, 2025">\n'
+              f"{form}\n</reference_form>" if form else "", fpl.prompt_block()]
+    return "\n\n".join(b for b in blocks if b)
+
+
+def system_prompt() -> str:
+    """The base instructions, the consistency points, the reading rules and the state's blank application, each
+    from the criteria file (each empty when the criteria file does not name it). The same for every hospital."""
+    points = paths.consistency_points()
+    base = SYSTEM + ("\n\n" + consistency.prompt_block(points) if points else "")
+    rules, form = paths.reading_rules(), reference_block()
+    return base + ("\n\n" + rules if rules else "") + ("\n\n" + form if form else "")
 
 
 def provider(cfg: dict) -> str:
@@ -164,33 +189,58 @@ def _create(client, cfg: dict, **kwargs):
         raise
 
 
-def call_model(system: str, user: str, cfg: dict) -> tuple[dict, dict]:
-    """Single provider boundary. Returns (tool input, call info). Cached on disk so reruns are free.
+def call_model(system: str, user: str, cfg: dict, schema: dict | None = None,
+               tag: dict | None = None) -> tuple[dict, dict]:
+    """Single provider boundary. Returns (parsed JSON reply, call info). Cached on disk so reruns are free.
+
+    schema: the JSON shape of the reply (default: the `ask` answers). `hfal judge` passes its own.
+    tag: {"purpose", "run_id", "hospital_id"}, written beside the call in the usage ledger (usage.py). Every call
+    that reaches the provider is a ledger row, including one that then fails; a cached answer is not.
 
     Call info: provider, model, stop_reason, input/output token counts, cached (True when read from disk).
     The cache key includes the provider and model ID, so switching providers never reuses the other's answers.
     """
+    schema = schema or SCHEMA
     prov, mid = provider(cfg), model_id(cfg)
-    key = hashlib.sha256(json.dumps([prov, mid, cfg.get("temperature"), system, user, TOOL], sort_keys=True).encode()).hexdigest()
+    key = hashlib.sha256(json.dumps([prov, mid, cfg.get("temperature"), cfg.get("effort"), system, user, schema],
+                                    sort_keys=True).encode()).hexdigest()
     cache_file = paths.CACHE / f"{key}.json"
     if cache_file.exists():
         saved = json.loads(cache_file.read_text(encoding="utf-8"))
         return saved["tool_input"], {**saved["info"], "cached": True}
 
+    output_config = {"format": {"type": "json_schema", "schema": schema}}
+    if cfg.get("effort"):
+        output_config["effort"] = cfg["effort"]          # thinking depth; the model's own default when unset
     resp = _create(
         make_client(cfg), cfg,
         max_tokens=cfg["max_output_tokens"],
         system=system,
         messages=[{"role": "user", "content": user}],
-        tools=[TOOL],
-        tool_choice={"type": "tool", "name": TOOL["name"]},
+        output_config=output_config,
     )
     info = {"provider": prov, "model": resp.model or mid, "temperature": cfg.get("temperature"),
-            "stop_reason": resp.stop_reason,
+            "effort": cfg.get("effort"), "stop_reason": resp.stop_reason,
             "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens}
-    if resp.stop_reason == "max_tokens":
+    text = next((b.text for b in resp.content if b.type == "text"), "")
+    status, result, bad_json = "ok", None, None
+    if resp.stop_reason == "refusal":
+        status = "refusal"
+    elif resp.stop_reason == "max_tokens":      # thinking tokens count toward this limit too
+        status = "max_tokens"
+    else:
+        try:
+            result = json.loads(text)
+        except ValueError as e:
+            status, bad_json = "bad_json", e
+    usage.log_call(info, status, {**(tag or {}), "purpose": (tag or {}).get("purpose", "call")})   # billed either way
+    if status == "refusal":
+        category = getattr(getattr(resp, "stop_details", None), "category", None)
+        raise RuntimeError(f"the model declined this request (category: {category}); nothing was saved")
+    if status == "max_tokens":
         raise RuntimeError(f"model output hit max_output_tokens ({cfg['max_output_tokens']}); raise it in settings.yaml")
-    result = next(b.input for b in resp.content if b.type == "tool_use")
+    if status == "bad_json":
+        raise RuntimeError(f"the model's reply was not valid JSON ({bad_json}); nothing was saved") from bad_json
     paths.CACHE.mkdir(parents=True, exist_ok=True)
     cache_file.write_text(json.dumps({"tool_input": result, "info": info}), encoding="utf-8")
     return result, {**info, "cached": False}
@@ -198,9 +248,13 @@ def call_model(system: str, user: str, cfg: dict) -> tuple[dict, dict]:
 
 def ping(cfg: dict) -> dict:
     """A tiny request (a few tokens) to check credentials, region and model access before a real run."""
-    resp = _create(make_client(cfg), cfg, max_tokens=20,
+    extra = {"output_config": {"effort": "low"}} if cfg.get("effort") else {}   # a model that takes effort at all
+    resp = _create(make_client(cfg), cfg, max_tokens=200, **extra,
                    messages=[{"role": "user", "content": "Reply with the single word: ready"}])
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
+    usage.log_call({"provider": provider(cfg), "model": model_id(cfg), "effort": None,
+                    "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens},
+                   "ok", {"purpose": "ping"})
     return {"provider": provider(cfg), "model_id": model_id(cfg), "region": cfg.get("aws_region", ""),
             "reply": text[:40], "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens}
 
@@ -226,34 +280,41 @@ def load_documents(hospital_id: str) -> list[dict]:
     return docs
 
 
-def build_prompt(docs: list[dict], criteria: list[dict]) -> str:
+def render_documents(docs: list[dict]) -> str:
+    """The documents block of a prompt: id, url and type tags, then the text with [[page N]] markers."""
     parts = []
     for d in docs:
         pages = "\n".join(f"[[page {i}]]\n{p}" for i, p in enumerate(d["pages"], start=1))
         parts.append(
             f'<document id="{d["sha8"]}" url="{d["source_url"]}" types="{",".join(d["types"])}">\n{pages}\n</document>'
         )
+    return "\n\n".join(parts)
+
+
+def build_prompt(docs: list[dict], criteria: list[dict]) -> str:
     crit = "\n".join(format_criterion(c) for c in criteria)
-    return "\n\n".join(parts) + f"\n\nCriteria (answer every one):\n{crit}"
+    return render_documents(docs) + f"\n\nCriteria (answer every one):\n{crit}"
 
 
 def format_criterion(c: dict) -> str:
     lines = [f'- {c["id"]}: {c["question"]}']
     if c.get("guidance"):
         lines.append(f'    Background: {c["guidance"]}')
+    if c.get("checks"):
+        lines.append('    Checks (work through them in order and write each result in your reason, e.g. "A: yes - ..."):')
+        lines += [f"      {chr(65 + i)}. {ch}" for i, ch in enumerate(c["checks"])]
     lines.append(f'    YES means: {c["yes_means"]}')
     if c.get("no_means"):
         lines.append(f'    NO means: {c["no_means"]}')
+    lines += [f"    Note: {n}" for n in c.get("notes", [])]
     return "\n".join(lines)
 
 
 def _verify(item: dict, docs: list[dict], by_id: dict) -> dict:
-    """Check item["quote"] verbatim against its cited document (or, failing that, every document)."""
-    doc = by_id.get(item.get("source_doc"))
-    for d in ([doc] if doc else docs):
-        ok, pg = verify_quote(item.get("quote", ""), d["pages"])
-        if ok:
-            return {**item, "source_doc": d["sha8"], "page": pg, "quote_verified": True}
+    """Check item["quote"] verbatim against its cited document (or, if the id is unknown, every document)."""
+    sha8, pg = find_quote(item.get("quote", ""), item.get("source_doc"), docs)
+    if sha8:
+        return {**item, "source_doc": sha8, "page": pg, "quote_verified": True}
     return {**item, "quote_verified": False}
 
 
@@ -276,6 +337,14 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
     answers: dict[str, dict] = {}
     reported = {"languages": [], "psa_counties": [], "languages_from_links": _links_languages(hospital_id)}
     call_info = None
+    form_check = None       # the match to the state form, when the criteria file has a reference form
+    fpl_check = None        # which year's poverty figures the application uses (same condition)
+    max_fpl_check = None    # whether the application says assistance reaches 400% (same condition)
+    consistency_check = None  # the points compared one by one, when the criteria file has consistency_points
+    points = paths.consistency_points()
+    prompt_chars = 0
+    if not docs and dry_run:
+        return {"hospital_id": hospital_id, "documents": 0, "prompt_chars": 0, "approx_input_tokens": 0}
     if not docs:
         # Nothing was collected: that is NOT_FOUND, never NO, and needs no API call.
         for c in criteria:
@@ -283,15 +352,16 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
                                     page=None, reason="no documents collected", quote_verified=False)
     else:
         prompt = build_prompt(docs, criteria)
-        if len(prompt) > cfg_all["max_input_chars"]:
-            raise RuntimeError(
-                f"{hospital_id}: {len(prompt)} chars exceeds max_input_chars. "
-                "Filter documents by type or add retrieval; refusing to truncate silently."
-            )
+        system = system_prompt()
+        prompt_chars = len(prompt) + len(system)
+        est, limit = estimate_tokens(prompt_chars, cfg_all), input_limit_tokens(cfg_all)
+        if est > limit:
+            raise TooLarge(hospital_id, est, limit)     # never truncate; the caller skips and records it
         if dry_run:
-            return {"hospital_id": hospital_id, "documents": len(docs), "prompt_chars": len(prompt) + len(SYSTEM),
-                    "approx_input_tokens": (len(prompt) + len(SYSTEM)) // 4}
-        raw, call_info = call_model(SYSTEM, prompt, cfg_all["model"])
+            return {"hospital_id": hospital_id, "documents": len(docs), "prompt_chars": prompt_chars,
+                    "approx_input_tokens": prompt_chars // 4}
+        raw, call_info = call_model(system, prompt, cfg_all["model"], schema=schema_for(points),
+                                    tag={"purpose": "ask", "run_id": run_id, "hospital_id": hospital_id})
         by_id = {d["sha8"]: d for d in docs}
         for a in raw.get("answers", []):
             if a.get("criterion_id") in ids:
@@ -299,6 +369,22 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
         for c in criteria:  # anything the model skipped is UNCLEAR, not NO
             answers.setdefault(c["id"], dict(criterion_id=c["id"], answer=UNCLEAR, quote="", source_doc="",
                                              page=None, reason="model returned no answer", quote_verified=False))
+        form_cfg, reference = cfg_all.get("form_check"), paths.reference_form()
+        best = formcheck.best_match(reference, docs) if form_cfg and reference else None
+        if best:
+            form_check = formcheck.record(best, form_cfg)
+            if formcheck.CRITERION in answers:
+                answers[formcheck.CRITERION], _ = formcheck.apply(answers[formcheck.CRITERION], reference, docs, form_cfg, best)
+        # the application = the document that best matches the state form (by content, not by keyword tags)
+        app = next((d for d in docs if best and d["sha8"] == best["sha8"] and best["share"] >= 0.5), None)
+        fpl_cfg = cfg_all.get("fpl_check")
+        if best and fpl_cfg and fpl.CRITERION in answers:
+            answers[fpl.CRITERION], fpl_check = fpl.apply(answers[fpl.CRITERION], app, fpl_cfg)
+        if best and cfg_all.get("max_fpl_check") and maxfpl.CRITERION in answers:
+            answers[maxfpl.CRITERION], max_fpl_check = maxfpl.apply(answers[maxfpl.CRITERION], app)
+        if points and consistency.CRITERION in answers:
+            consistency_check = consistency.check(raw.get("consistency_points"), points, docs)
+            answers[consistency.CRITERION] = consistency.apply(answers[consistency.CRITERION], consistency_check)
         reported["languages"] = [_verify(x, docs, by_id) for x in raw.get("languages", [])]
         reported["psa_counties"] = [_verify(x, docs, by_id) for x in raw.get("psa_counties", [])]
 
@@ -309,15 +395,38 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
         "model": model_id(cfg_all["model"]),
         "prompt_version": cfg_all["prompt_version"],
         "call": call_info,
+        "prompt_chars": prompt_chars,     # input size, for the error-rate-by-prompt-size analysis
         "documents": [{"sha8": d["sha8"], "url": d["source_url"], "types": d["types"],
                        "needs_ocr": d["needs_ocr"]} for d in docs],
         "answers": list(answers.values()),
+        "form_check": form_check,
+        "fpl_check": fpl_check,
+        "max_fpl_check": max_fpl_check,
+        "consistency_check": consistency_check,
         "reported": reported,
     }
     out = paths.RUNS / run_id / f"{hospital_id}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     return result
+
+
+def iter_ask(ids: list[str], run_id: str, dry_run: bool = False):
+    """Ask each hospital in turn, yielding (hospital_id, result, skipped). A hospital that is too large for one
+    call is skipped (result None, skipped = its record) and the batch carries on; any other error still stops it."""
+    for hid in ids:
+        try:
+            yield hid, ask_hospital(hid, run_id, dry_run=dry_run), None
+        except TooLarge as e:
+            yield hid, None, e.item
+
+
+def write_skipped(run_id: str, skipped: list[dict]) -> None:
+    """runs/RUN_ID/skipped.json: hospitals not asked because they were too large. Attrition reads it."""
+    if skipped:
+        out = paths.RUNS / run_id / "skipped.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"reason": "too_large", "hospitals": skipped}, indent=2), encoding="utf-8")
 
 
 def reported_by_document(result: dict, key: str, field: str) -> dict[str, list[str]]:

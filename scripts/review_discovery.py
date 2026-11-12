@@ -108,9 +108,9 @@ def build_rows() -> tuple[list[dict], Counter]:
 
 
 def summarize(path: Path) -> None:
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:   # the sheet is written (and Excel saves it) with a BOM
         rows = list(csv.DictReader(f))
-    ans = lambda r: r["relevant"].strip().upper()[:1]
+    ans =lambda r: r["relevant"].strip().upper()[:1]
     sel = [r for r in rows if r["status"] == "selected"]
     nsel = [r for r in rows if r["status"] != "selected"]
     c_sel, c_nsel = Counter(ans(r) or "blank" for r in sel), Counter(ans(r) or "blank" for r in nsel)

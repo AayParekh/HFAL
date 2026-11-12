@@ -17,17 +17,18 @@ TOOL_INPUT = {"answers": [], "languages": [], "psa_counties": []}
 class FakeClient:
     """Stands in for anthropic.Anthropic / AnthropicBedrock: records the request, returns a canned reply."""
 
-    def __init__(self, stop_reason="tool_use", error=None):
-        self.calls, self.stop_reason, self.error = [], stop_reason, error
+    def __init__(self, stop_reason="end_turn", error=None, text=None):
+        self.calls, self.stop_reason, self.error, self.text = [], stop_reason, error, text
         self.messages = NS(create=self._create)
 
     def _create(self, **kw):
         self.calls.append(kw)
         if self.error:
             raise self.error
-        content = [NS(type="tool_use", input=TOOL_INPUT)] if "tools" in kw else [NS(type="text", text="ready")]
-        return NS(model=kw["model"], stop_reason=self.stop_reason, content=content,
-                  usage=NS(input_tokens=50, output_tokens=5))
+        structured = "format" in kw.get("output_config", {})
+        text = self.text if self.text is not None else (json.dumps(TOOL_INPUT) if structured else "ready")
+        return NS(model=kw["model"], stop_reason=self.stop_reason, content=[NS(type="text", text=text)],
+                  usage=NS(input_tokens=50, output_tokens=5), stop_details=NS(category="cyber"))
 
 
 @pytest.fixture
@@ -88,7 +89,54 @@ def test_ping(monkeypatch):
     r = ask.ping(BEDROCK)
     assert r == {"provider": "bedrock", "model_id": "us.anthropic.test-v1:0", "region": "us-east-1",
                  "reply": "ready", "input_tokens": 50, "output_tokens": 5}
-    assert "tools" not in fake.calls[0]
+    assert "tools" not in fake.calls[0] and "output_config" not in fake.calls[0]   # no effort configured: none sent
+
+
+def test_request_uses_structured_outputs_not_forced_tool_use(cache, monkeypatch):
+    """claude-sonnet-5-5 answers a forced tool_choice with a 400, so none may be sent."""
+    fake = use(monkeypatch, FakeClient())
+    ask.call_model("sys", "user", {**ANTHROPIC, "effort": "high"})
+    kw = fake.calls[0]
+    assert "tools" not in kw and "tool_choice" not in kw
+    assert kw["output_config"]["format"] == {"type": "json_schema", "schema": ask.SCHEMA}
+    assert kw["output_config"]["effort"] == "high"
+    assert "thinking" not in kw and "temperature" not in kw
+
+
+def test_effort_is_not_sent_unless_configured_and_changes_the_cache_key(cache, monkeypatch):
+    fake = use(monkeypatch, FakeClient())
+    ask.call_model("sys", "user", ANTHROPIC)
+    assert "effort" not in fake.calls[0]["output_config"]
+    _, info = ask.call_model("sys", "user", {**ANTHROPIC, "effort": "medium"})
+    assert info["cached"] is False and len(fake.calls) == 2
+
+
+def _closed(node):
+    """Every object in the schema must say additionalProperties: false (structured outputs require it)."""
+    if isinstance(node, dict):
+        if node.get("type") == "object":
+            assert node.get("additionalProperties") is False and set(node["required"]) == set(node["properties"])
+        for v in node.values():
+            _closed(v)
+    elif isinstance(node, list):
+        for v in node:
+            _closed(v)
+
+
+def test_schema_meets_the_structured_output_rules():
+    _closed(ask.SCHEMA)
+    assert set(ask.SCHEMA["properties"]) == {"answers", "languages", "psa_counties"}
+    assert ask.SCHEMA["properties"]["answers"]["items"]["properties"]["answer"]["enum"] == ask.ANSWERS
+
+
+def test_invalid_json_and_refusals_are_errors_not_results(cache, monkeypatch):
+    use(monkeypatch, FakeClient(text="not json"))
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        ask.call_model("sys", "user", ANTHROPIC)
+    use(monkeypatch, FakeClient(stop_reason="refusal"))
+    with pytest.raises(RuntimeError, match="declined"):
+        ask.call_model("sys2", "user", ANTHROPIC)
+    assert not (cache / "cache").exists() or not list((cache / "cache").glob("*.json"))
 
 
 def test_new_run_id_has_no_unsafe_characters(monkeypatch):
@@ -133,9 +181,8 @@ def test_real_bedrock_client_end_to_end_against_a_local_server(cache, monkeypatc
         def do_POST(self):
             seen.update(path=self.path, auth=self.headers.get("Authorization", ""),
                         body=json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-            out = json.dumps({"id": "m", "type": "message", "role": "assistant", "model": "x", "stop_reason": "tool_use",
-                              "stop_sequence": None, "content": [{"type": "tool_use", "id": "t", "name": "record_answers",
-                                                                  "input": TOOL_INPUT}],
+            out = json.dumps({"id": "m", "type": "message", "role": "assistant", "model": "x", "stop_reason": "end_turn",
+                              "stop_sequence": None, "content": [{"type": "text", "text": json.dumps(TOOL_INPUT)}],
                               "usage": {"input_tokens": 7, "output_tokens": 3}}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -159,4 +206,23 @@ def test_real_bedrock_client_end_to_end_against_a_local_server(cache, monkeypatc
     assert result == TOOL_INPUT and info["input_tokens"] == 7
     assert seen["path"] == "/model/us.anthropic.test-v1:0/invoke" or seen["path"].endswith("/invoke")
     assert seen["auth"] == "Bearer fake-token"
-    assert seen["body"]["tool_choice"] == {"type": "tool", "name": "record_answers"} and "model" not in seen["body"]
+    body = seen["body"]      # what the real SDK put on the wire
+    assert "tool_choice" not in body and "tools" not in body and "model" not in body
+    assert body["output_config"]["format"]["type"] == "json_schema" and body["output_config"]["format"]["schema"] == ask.SCHEMA
+
+
+def test_working_set_reads_the_file(tmp_path, monkeypatch, capsys):
+    from hfal import cli
+    monkeypatch.setattr(paths, "DATA", tmp_path)
+    (tmp_path / "working_set.csv").write_text("hospital_id,set\na,dev\nb,eval\nc,dev\n")
+    assert cli.working_set("dev") == ["a", "c"] and cli.working_set("all") == ["a", "b", "c"]
+
+
+def test_pick_sample_is_reproducible_and_ignores_input_order():
+    from hfal import cli
+    ids = [f"fake{i:02d}" for i in range(30)]
+    a = cli.pick_sample(ids, 10, seed=1)
+    assert a == cli.pick_sample(list(reversed(ids)), 10, seed=1) and len(set(a)) == 10
+    assert a != cli.pick_sample(ids, 10, seed=2)
+    with pytest.raises(SystemExit):
+        cli.pick_sample(ids[:5], 10, seed=1)

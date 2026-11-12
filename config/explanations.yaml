@@ -1,0 +1,408 @@
+# Plain-language explanations, one per criterion. HAND-WRITTEN; no model writes or edits them (CLAUDE.md).
+#
+# STATUS: DRAFT 1 (2026-11-11). Not yet reviewed by CSSNY or by anyone who knows the law. Do not publish before review.
+#
+# Readers: patients, advocates, regulators, lawmakers. Short sentences, everyday words, no "shall".
+#
+# Fields per criterion
+#   title           a short name for the requirement.
+#   basis           how directly the law states the requirement. The public text must not claim more than this:
+#                     law                 the law states it.
+#                     law_and_state_form  the law requires the state's uniform form (subdivision 9), and the form
+#                                         carries the requirement; or the law states the goal and the form the detail.
+#                     review_standard     the review's own standard, built on the law but going past its words.
+#                                         The rule text says so.
+#   law             the parts of N.Y. Public Health Law § 2807-k the rule rests on: `cite` (the part, e.g. 9-a(e))
+#                   and `quote` (copied exactly from config/reference/phl_2807k_9a.txt). `hfal.explain.check`
+#                   proves each quote is in the cited part; tests/test_explanations.py runs it.
+#   rule            what the law (or the review) requires, in plain words.
+#   why_it_matters  what happens to a patient when the requirement is not met.
+#   if_no / if_yes  the result sentence for this hospital. (Not `no:` / `yes:`: YAML reads those keys as false / true.)
+#   grade_note      optional: how the criterion counts in the grade, when it is unusual.
+#   reviewer_note   for the reviewer only, never shown to the public: open questions about the wording or the law.
+#
+# How a result is shown (for the future front end)
+#   NO          title, `if_no`, the hospital's own words (the verified quote, its document and page), `rule`,
+#               `why_it_matters`, then the citation(s).
+#   YES         title, `if_yes`.
+#   UNCLEAR, NOT_FOUND, N/A
+#               title, the `common` sentence for that result, then `rule` so the reader knows what was checked.
+#               NOT_FOUND is never shown as a failure (CLAUDE.md).
+
+version: draft-1
+law_file: reference/phl_2807k_9a.txt
+
+common:
+  UNCLEAR: >-
+    The hospital's documents did not let us decide this for certain. A person will check it by hand.
+  NOT_FOUND: >-
+    We could not find the document needed to check this, so we cannot say whether the hospital meets this
+    requirement. This does not mean the hospital fails it. A person will check it by hand.
+  N/A: >-
+    This requirement does not apply here.
+  evidence_label: "What the hospital's document says:"
+  law_label: "The law:"
+
+criteria:
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # Materials on the website
+  # ---------------------------------------------------------------------------------------------------------------
+
+  application_posted:
+    title: Application posted online
+    basis: review_standard
+    law:
+      - cite: "9"
+        quote: shall also utilize only the uniform financial assistance form
+      - cite: 9-a(e)
+        quote: >-
+          General hospitals shall, upon request, assist patients in understanding the hospital’s policies and
+          procedures and in applying for payment adjustments.
+    rule: >-
+      Every hospital in New York must use the state's financial assistance application and must help patients
+      apply. The law does not say in so many words that the application has to be on the hospital's website. This
+      review expects it there, because the website is where most patients look first.
+    why_it_matters: >-
+      Without the application online, a patient has to call or visit the hospital just to get the form, and many
+      never do.
+    if_no: This hospital's website does not offer a financial assistance application for this hospital.
+    if_yes: This hospital posts a financial assistance application on its website.
+    grade_note: Missing this is an automatic F in this review.
+    reviewer_note: >-
+      Federal rules for nonprofit hospitals (IRS, section 501(r)) require the policy, the application and a
+      plain-language summary to be on a website. That rule is not in config/reference, so it is not cited. Should
+      it be, for nonprofit hospitals?
+
+  policy_summary_posted:
+    title: Plain-language summary posted
+    basis: law
+    law:
+      - cite: 9-a(c)
+        quote: >-
+          Such policies and procedures shall be clear, understandable, in writing and publicly available in summary
+          form
+    rule: >-
+      The law says a hospital's financial assistance policy must be clear, easy to understand, written down, and
+      available to the public as a summary. This review checks for the summary on the hospital's website.
+    why_it_matters: >-
+      The summary is the short version most patients actually read. Without it, patients must work through the
+      full policy to learn whether they qualify.
+    if_no: This hospital does not offer a readable summary of its financial assistance policy on its website.
+    if_yes: This hospital posts a summary of its financial assistance policy on its website.
+    reviewer_note: >-
+      "Publicly available" is the law's phrase; the law does not name the website. Fine to say "on its website"
+      in the result sentences, since that is what the review checks?
+
+  policy_statement_posted:
+    title: Full policy posted
+    basis: review_standard
+    law:
+      - cite: 9-a(c)
+        quote: >-
+          Such policies and procedures shall be clear, understandable, in writing and publicly available in summary
+          form
+    rule: >-
+      The law says the hospital's financial assistance policy must be written down, clear and easy to understand,
+      and that the public must at least get a summary of it. This review also checks that the full policy is on
+      the website, so patients and advocates can read the complete rules.
+    why_it_matters: >-
+      The full policy holds details a summary leaves out, such as how discounts are worked out and how to appeal
+      a denial.
+    if_no: This hospital does not post its full financial assistance policy on its website.
+    if_yes: This hospital posts its full financial assistance policy on its website.
+    grade_note: >-
+      CSSNY's written rubric calls this an automatic F, but its sheet does not apply that rule. Open question
+      (PLAN.md, Open decisions 2); until it is settled this counts as one error.
+    reviewer_note: Drop grade_note from the public text once the automatic-F question is decided.
+
+  consistent_across_posted_documents:
+    title: Documents agree with each other
+    basis: review_standard
+    law:
+      - cite: 9-a(c)
+        quote: Such policies and procedures shall be clear, understandable, in writing
+    rule: >-
+      The law says a hospital's financial assistance policy must be clear and easy to understand. Documents that
+      contradict each other are neither. This review checks that the policy, the summary and the application say
+      the same thing on points such as who qualifies, deadlines and how to apply.
+    why_it_matters: >-
+      When two documents disagree, patients cannot tell which rule applies to them, and may follow the one that
+      works against them.
+    if_no: This hospital's documents contradict each other on at least one point.
+    if_yes: We found no contradictions between this hospital's documents.
+    reviewer_note: >-
+      9-a(d) says the policies must be "applied consistently to all eligible patients". That is about treating
+      patients alike, not about documents agreeing, so it is not cited. Agree?
+
+  primary_service_area_boundaries_compliant_with_2007_guidelines:
+    title: Service area drawn by the state's rules
+    basis: law_and_state_form
+    law:
+      - cite: 9-a(f)
+        quote: >-
+          for medically necessary hospital services for patients who reside in the hospital’s primary service area
+          as determined according to criteria established by the commissioner
+      - cite: 9-a(f)(i)
+        quote: >-
+          prohibit a hospital from developing or altering its primary service area in a manner designed to avoid
+          medically underserved communities or communities with high percentages of uninsured residents
+    rule: >-
+      The law says a hospital must give financial assistance for necessary, non-emergency care to patients who live
+      in its "primary service area", and that the State Health Commissioner sets the rules for drawing that area.
+      Under the state's 2007 rules, the area must include at least the hospital's own county and every county that
+      borders it; for a New York City hospital, all five boroughs and the counties that border them. A hospital may
+      not draw its area to leave out poorer or uninsured communities.
+    why_it_matters: >-
+      Patients who live outside the area can be refused help with non-emergency care. An area drawn too small
+      leaves out people the rules say should be covered.
+    if_no: This hospital's service area, as its documents describe it, leaves out at least one county the state's rules require.
+    if_yes: This hospital's service area, as its documents describe it, includes every county the state's rules require.
+    reviewer_note: >-
+      The county rule comes from the Department of Health's 2007 guidelines, not from the statute, so basis is
+      really "law and state guidance". Add the 2007 letter to config/reference so it can be cited and quoted too.
+
+  no_time_limit_to_submit:
+    title: No deadline to apply
+    basis: law
+    law:
+      - cite: 9-a(e)
+        quote: >-
+          Such policies and procedures shall permit patients to apply for assistance at any time during the
+          collection process.
+    rule: >-
+      The law says patients can apply for financial assistance at any time, even after a bill has gone to
+      collections. A hospital cannot set a deadline.
+    why_it_matters: >-
+      A patient told that the deadline has passed may give up and pay a bill they should not owe, or face debt
+      collectors.
+    if_no: This hospital's documents set a deadline for applying.
+    if_yes: This hospital's documents set no deadline for applying.
+
+  no_evidence_of_asset_checks:
+    title: No test of savings or property
+    basis: law_and_state_form
+    law:
+      - cite: 9-a(f)
+        quote: >-
+          patients with incomes below four hundred percent of the federal poverty level are deemed presumptively
+          eligible for payment adjustments
+      - cite: 9-a(e)
+        quote: such application process shall not be unduly burdensome or complex
+    rule: >-
+      Under the law, who qualifies depends on income: patients with income below 400% of the federal poverty level
+      are presumed to qualify. The law sets no test of savings or property, and the state's application form does
+      not ask about them. The application process must not be unduly burdensome.
+    why_it_matters: >-
+      Families with modest savings can be turned away, or put off by requests for bank statements, even though
+      their income qualifies them.
+    if_no: This hospital's documents ask about savings or other assets, for example bank statements, when deciding who gets help.
+    if_yes: We found no request for information about savings or other assets in this hospital's documents.
+    reviewer_note: >-
+      The statute does not say "no asset test" in words; this criterion is CSSNY's reading of it. Confirm with a
+      legal reviewer. If an earlier version of 9-a allowed asset tests and the 2024 change removed that, saying so
+      would be clearer, but only with the earlier text in hand.
+
+  no_mention_of_immigration_status_as_a_barrier:
+    title: Immigration status not a barrier
+    basis: law
+    law:
+      - cite: 9-a(a)
+        quote: >-
+          Immigration status shall not be an eligibility criterion for the purpose of determining financial
+          assistance under this section.
+    rule: The law says immigration status cannot be used to decide who gets financial assistance.
+    why_it_matters: >-
+      Immigrants, with or without papers, qualify on the same terms as anyone else. Wording that suggests
+      otherwise can keep eligible people from applying.
+    if_no: This hospital's documents say or suggest that immigration status can keep a patient from getting financial assistance.
+    if_yes: Nothing in this hospital's documents makes immigration status a barrier to financial assistance.
+
+  languages_available:
+    title: Application in patients' languages
+    basis: law
+    law:
+      - cite: 9-a(e)
+        quote: >-
+          Application forms shall be printed in the “primary languages” of patients served by the general hospital.
+      - cite: 9-a(e)
+        quote: during at least five percent of patient visits in a year
+      - cite: 9-a(e)(ii)
+        quote: spoken by non-English speaking individuals comprising more than one percent of the primary hospital service area population
+    rule: >-
+      The law says application forms must be printed in the main languages of the hospital's patients: any
+      language used in at least 5% of patient visits by people with limited English, or spoken by more than 1% of
+      the people in the hospital's service area.
+    why_it_matters: A form a patient cannot read is a form they cannot fill in.
+    if_no: We found this hospital's application only in English.
+    if_yes: This hospital offers its application in at least one language besides English.
+    grade_note: >-
+      Listed, not graded. We cannot tell which languages a hospital's patients speak, so we show the languages it
+      offers instead of scoring them.
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # The application
+  # ---------------------------------------------------------------------------------------------------------------
+
+  entire_uniform_application:
+    title: Full state application form
+    basis: law
+    law:
+      - cite: "9"
+        quote: utilizing only a uniform financial assistance form developed and provided by the department
+      - cite: "9"
+        quote: >-
+          All general hospitals that do not participate in the indigent care pool shall also utilize only the
+          uniform financial assistance form
+    rule: >-
+      The law says every hospital must use only the state's uniform financial assistance application, written by
+      the Department of Health. A hospital fills in its own name and phone number, but it should not cut parts of
+      the form or change its rules.
+    why_it_matters: >-
+      The state form states patients' rights the same way at every hospital. A shortened or rewritten form can
+      drop rights, such as the limit on monthly payments, or add hurdles.
+    if_no: This hospital does not use the full state application. Parts are missing or changed, or it uses a form of its own.
+    if_yes: This hospital uses the full state application.
+    grade_note: Missing this is an automatic F in this review.
+    reviewer_note: >-
+      Does the state allow other changes (a different year's poverty table, a translated form, the hospital's
+      logo)? The form check already accepts some (config/reference/README.md); the rule text should match.
+
+  contact_information_included_in_application:
+    title: Contact for help on the application
+    basis: law_and_state_form
+    law:
+      - cite: 9-a(e)
+        quote: >-
+          General hospitals shall, upon request, assist patients in understanding the hospital’s policies and
+          procedures and in applying for payment adjustments.
+    rule: >-
+      The law says hospitals must help patients understand the policy and fill in the application when they ask.
+      The state's application form has a line for the hospital's financial assistance office and phone number, so
+      patients know whom to ask.
+    why_it_matters: >-
+      Patients often get stuck partway through the form. Without a contact on the form itself, they do not know
+      where to get the help the law promises.
+    if_no: This hospital's application does not say whom to contact for help with it.
+    if_yes: This hospital's application says whom to contact for help with it.
+
+  income_and_discount_tables_included_in_application:
+    title: Income and discount table on the application
+    basis: law_and_state_form
+    law:
+      - cite: 9-a(b)
+        quote: >-
+          For patients with incomes below at least two hundred percent of the federal poverty level, the hospital
+          shall waive all charges.
+    rule: >-
+      The law sets how much patients pay by income: nothing at all below 200% of the federal poverty level, and
+      limited amounts on a sliding scale up to 400%. The state's application form has a table of these income
+      levels and discounts so patients can see what they would owe.
+    why_it_matters: >-
+      With the table in front of them, patients can see right away whether applying is worth it. Without it, many
+      assume they earn too much and never apply.
+    if_no: This hospital's application does not include a table of income levels and the discount at each level.
+    if_yes: This hospital's application includes a table of income levels and the discount at each level.
+
+  2025_fpl_guidelines:
+    title: Current poverty figures on the application
+    basis: review_standard
+    law:
+      - cite: 9-a(b)
+        quote: patients with incomes below at least four hundred percent of the federal poverty level
+    rule: >-
+      The law measures who qualifies against the federal poverty level, which the federal government updates
+      every year. This review checks that the dollar amounts in the application match the current figures (2025
+      or 2026).
+    why_it_matters: >-
+      Old figures are lower than current ones, so a patient whose income is just above an old line may wrongly
+      decide they do not qualify.
+    if_no: The income figures in this hospital's application are out of date or missing.
+    if_yes: The income figures in this hospital's application match the current federal poverty guidelines.
+    reviewer_note: >-
+      "Old figures are lower" holds when the guidelines rise, as they nearly always do. Keep, or soften to "can be
+      lower"?
+
+  max_fpl:
+    title: Help for incomes up to 400% of the poverty level
+    basis: law
+    law:
+      - cite: 9-a(f)
+        quote: >-
+          patients with incomes below four hundred percent of the federal poverty level are deemed presumptively
+          eligible for payment adjustments
+    rule: >-
+      The law says patients with income below 400% of the federal poverty level, four times the poverty line,
+      are presumed to qualify for reduced bills.
+    why_it_matters: >-
+      A hospital that stops at a lower income, such as 300%, turns away patients the law says should get help.
+    if_no: This hospital's financial assistance stops below 400% of the federal poverty level.
+    if_yes: This hospital's financial assistance reaches incomes of at least 400% of the federal poverty level.
+    reviewer_note: >-
+      Adding a dollar example ("about $X a year for a family of four") would help readers. It changes every year;
+      it could be filled in from config/reference/fpl.yaml when the page is built.
+
+  installments_capped_at_5_of_monthly_income:
+    title: Monthly payments capped at 5% of income
+    basis: law
+    law:
+      - cite: 9-a(d)
+        quote: The monthly payment under such a plan shall not exceed five percent of the gross monthly income of the patient.
+      - cite: 9-a(d)
+        quote: The rate of interest charged to the patient on the unpaid balance, if any, shall not exceed two percent
+    rule: >-
+      The law says that a patient paying in installments cannot be asked to pay more than 5% of their monthly
+      income before taxes each month, and that interest is capped at 2%. The state's application form states the
+      5% limit; this review checks that the hospital's application does too.
+    why_it_matters: >-
+      Without the limit written on the form, patients may agree to payment plans they cannot afford.
+    if_no: This hospital's application does not state the 5% limit on monthly payments, or it states a higher limit.
+    if_yes: This hospital's application states the 5% limit on monthly payments.
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # The plain-language summary
+  # ---------------------------------------------------------------------------------------------------------------
+
+  primary_service_area_listed_in_summary:
+    title: Service area in the summary
+    basis: law
+    law:
+      - cite: 9-a(c)
+        quote: >-
+          Any summary provided to patients shall, at a minimum, include specific information as to income levels
+          used to determine eligibility for assistance, a description of the primary service area of the hospital
+          and the means of applying for assistance.
+    rule: >-
+      The law says the hospital's summary must describe its primary service area: the area whose residents can get
+      help with non-emergency care.
+    why_it_matters: Patients need to know whether they live in the area before they take the time to apply.
+    if_no: This hospital's summary does not describe its service area.
+    if_yes: This hospital's summary describes its service area.
+
+  means_of_applying_for_assistance_explained:
+    title: How to apply, in the summary
+    basis: law
+    law:
+      - cite: 9-a(c)
+        quote: >-
+          Any summary provided to patients shall, at a minimum, include specific information as to income levels
+          used to determine eligibility for assistance, a description of the primary service area of the hospital
+          and the means of applying for assistance.
+    rule: The law says the hospital's summary must explain how to apply for financial assistance.
+    why_it_matters: A summary that says help exists, but not how to get it, leaves patients stuck.
+    if_no: This hospital's summary does not explain how to apply.
+    if_yes: This hospital's summary explains how to apply.
+
+  income_levels_used_to_determine_assistance:
+    title: Income levels in the summary
+    basis: law
+    law:
+      - cite: 9-a(c)
+        quote: >-
+          Any summary provided to patients shall, at a minimum, include specific information as to income levels
+          used to determine eligibility for assistance, a description of the primary service area of the hospital
+          and the means of applying for assistance.
+    rule: The law says the hospital's summary must state the income levels used to decide who qualifies.
+    why_it_matters: This is how patients can tell at a glance whether they are likely to qualify.
+    if_no: This hospital's summary does not state the income levels that decide who qualifies.
+    if_yes: This hospital's summary states the income levels that decide who qualifies.

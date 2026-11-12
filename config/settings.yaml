@@ -4,21 +4,92 @@ model:
   name: claude-sonnet-5-5      # Anthropic API model name (used when provider: anthropic)
   # Used when provider: bedrock. Copy the model / inference profile ID from the Bedrock console
   # (Model catalog); newer models need a regional ID such as us.anthropic.<model>.
-  bedrock_id: "<set from the Bedrock console>"
+  bedrock_id: "us.anthropic.claude-sonnet-4-6"
   aws_region: us-east-1
-  aws_profile: null            # optional: a named profile (e.g. an SSO profile). Otherwise env vars:
+  aws_profile: hackathon       # optional: a named profile (e.g. an SSO profile). Otherwise env vars:
                                # AWS_BEARER_TOKEN_BEDROCK, or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
   temperature: null            # not sent unless set: the SDK has no temperature argument (sent via extra_body if set;
                                # the API may reject it for some models). Reproducibility = response cache + logged ids.
-  max_output_tokens: 8000
+  # Thinking tokens count toward max_output_tokens, so leave room: the answers are about 3-4k tokens.
+  max_output_tokens: 16000
+  # How hard the model thinks (low | medium | high | xhigh | max). high is claude-sonnet-5-5's own default, written
+  # out so it is logged and part of the cache key. Accuracy beats cost here; try medium on dev only with evidence.
+  effort: high
 
-prompt_version: v2   # v2: reported lists (languages, PSA counties); v1: no_means and guidance
+# The judge (`hfal judge`): a second model that explains disagreements with the golden labels. It is a different,
+# stronger model than the checker on purpose, so the two do not share blind spots. Same provider rules as `model`.
+judge:
+  provider: anthropic
+  name: claude-opus-5-5
+  bedrock_id: "<set from the Bedrock console>"
+  aws_region: us-east-1
+  aws_profile: null
+  temperature: null
+  max_output_tokens: 16000
+  effort: high
 
-# Guard: if a hospital's combined text exceeds this, `hfal ask` stops with an
-# error instead of silently truncating. Filter by doc type or add retrieval then.
-max_input_chars: 600000
+# Prices in US dollars per million tokens, for the cost in the usage summary and ledger (src/hfal/usage.py). Anthropic
+# API list prices (Nov 2026; check https://www.anthropic.com/pricing when they change). A model not listed here is
+# counted in tokens with its cost left blank. Amazon Bedrock is priced separately: add a key "bedrock/<bedrock_id>".
+# Prompt caching is not used, so there is no cache-read price.
+prices:
+  claude-sonnet-5-5: {input: 2.00, output: 10.00}
+  claude-opus-5-5: {input: 4.00, output: 20.00}
+
+# v5 (criteria_overrides.yaml -> criteria.yaml): the rubric (checks, notes and reading rules), the reported lists
+# (languages, PSA counties), the 2007 PSA rule, the state's blank uniform application in the system prompt
+# (<reference_form>) and the checks below. Run on 20 dev hospitals. Earlier versions (v1-v4) are retired.
+# v6 (criteria_overrides_v6.yaml): PSA from wording about residents, languages NO when none named, physician-group
+# documents set aside. Folded into v7; not run on its own.
+# v7 (criteria_overrides_v7.yaml -> criteria_v7.yaml): v6 plus consistency point by point (src/hfal/consistency.py).
+# Set prompt_version and criteria_file together; once a version has been run, bump it with every wording change.
+# Decided Nov 11 (owner): no v5 baseline on the other 60 dev hospitals and no v6 run; the next paid run is v7.
+# v5 stays on disk for the 20 dev hospitals already asked. To judge or re-ask those v5 runs, set both lines back
+# (prompt_version: v5 and criteria_file: criteria.yaml).
+prompt_version: v7
+criteria_file: criteria_v7.yaml
+
+# "Too large for one call". A hospital whose prompt (all its documents, the criteria and the instructions) would
+# use more than max_input_share of the model's context window is NOT asked and NOT truncated: `hfal ask` skips it,
+# lists it in runs/RUN_ID/skipped.json, and attrition counts it as "too large for one call". The rest of the
+# batch carries on.
+#   context_window_tokens  claude-sonnet-5-5 has a 1,000,000-token window (Anthropic's model table, Nov 2026).
+#                          Change it with the model; check the Models API field max_input_tokens when you have a
+#                          key. Amazon Bedrock may serve a different window: check the console.
+#   max_input_share        0.80 leaves room for the answer (up to max_output_tokens) and for token-count error.
+#   chars_per_token        the guard assumes 3 characters per token, below the usual 4 for English prose, so the
+#                          estimate errs high (tables, numbers and forms use more tokens per character).
+# This is a safety limit, not a quality limit: research finds accuracy can fall long before the window is full
+# (PLAN.md, "Long-context checks"). Quality is measured with the prompt-size analysis, not assumed.
+context_window_tokens: 1000000
+max_input_share: 0.80
+chars_per_token: 3
 
 fetch:
   delay_seconds: 1.5
   timeout_seconds: 30
   respect_robots: true
+
+# The form check (src/hfal/formcheck.py), for the criterion entire_uniform_application. Code measures how much of
+# the state form's wording a hospital document contains (4-word windows; the poverty table's figures are ignored).
+#   pass_share            at or above this share, with no paragraph mostly missing, the answer is YES by code.
+#   min_paragraph_share   a paragraph of the state form (12+ words) found less than this much in the document counts
+#                         as missing, and the document does not pass however high the overall share is.
+# Below the pass line a model YES becomes UNCLEAR; a model NO or UNCLEAR stands. Only used when the criteria file
+# names a reference_form.
+form_check:
+  pass_share: 0.98
+  min_paragraph_share: 0.5
+
+# The FPL check (src/hfal/fpl.py), for the criterion 2025_fpl_guidelines. Code compares the dollar amounts in the
+# application (the document that best matches the state form) with the official poverty figures of each year in
+# config/reference/fpl.yaml. Figures of 2025 or later only: YES by code; earlier years only: NO; both: UNCLEAR;
+# none recognised: the model's answer stands. Same on/off switch as form_check (needs a reference form).
+#   min_figures   a year counts as found when at least this many of its 32 amounts (100/200/300/400% for 1-8 people) appear.
+fpl_check:
+  min_figures: 6
+
+# The max FPL check (src/hfal/maxfpl.py), for the criterion max_fpl. Code looks in the application (same document as
+# above) for a clear statement that assistance reaches 400% ("up to 400% ... eligible"). A model NO against such a
+# statement becomes UNCLEAR; nothing else changes (code never creates a YES). Same on/off switch as form_check.
+max_fpl_check: true

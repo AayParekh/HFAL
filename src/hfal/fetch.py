@@ -109,13 +109,18 @@ def _manual_files(hid: str) -> list[Path]:
     return sorted(p for p in d.iterdir() if p.is_file() and p.name.lower() not in MANUAL_SKIP and not p.name.startswith("."))
 
 
-def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None) -> None:
+def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None, landing_only: bool = False) -> None:
     """Download every row of data/sources.csv, and ingest files dropped into data/manual/{hospital_id}/.
 
     Manifest entry per URL (or manual file): url, label, fetched_at, status, and when stored: sha8 (file
     name), sha256 (full hash), ext, bytes, change (new | changed | unchanged vs the last time this URL was
     seen), plus for downloads http_status, final_url (after redirects), content_type, last_modified.
+
+    landing_only: fetch only the landing-page rows (no documents, no manual files). `hfal monitor` uses it to
+    refresh the page discovery starts from; the full fetch that follows replaces that day's manifest.
     """
+    from .sources import LANDING_LABEL
+
     cfg = paths.settings()["fetch"]
     sources_csv = sources_csv or paths.DATA / "sources.csv"
     with open(sources_csv, newline="", encoding="utf-8") as f:
@@ -123,9 +128,9 @@ def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None) -> 
 
     by_hospital = defaultdict(list)
     for r in rows:
-        if only is None or r["hospital_id"] in only:
+        if (only is None or r["hospital_id"] in only) and (not landing_only or r.get("label") == LANDING_LABEL):
             by_hospital[r["hospital_id"]].append(r)
-    if paths.MANUAL.is_dir():
+    if paths.MANUAL.is_dir() and not landing_only:
         for d in paths.MANUAL.iterdir():
             if d.is_dir() and (only is None or d.name in only):
                 by_hospital.setdefault(d.name, [])
@@ -166,7 +171,7 @@ def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None) -> 
                 manifest.append(entry)
                 print(f"{hid}  {entry['status']:<18} {url}")
                 time.sleep(cfg["delay_seconds"])
-            for p in _manual_files(hid):
+            for p in ([] if landing_only else _manual_files(hid)):
                 content = p.read_bytes()
                 url = f"manual:{p.name}"
                 entry = {"url": url, "label": "manual",

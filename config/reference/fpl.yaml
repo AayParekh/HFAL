@@ -1,0 +1,6 @@
+# Federal poverty guidelines, 48 contiguous states (what New York uses), dollars per year.
+# A household of n people at 100% = first + (n - 1) * additional. Read by src/hfal/fpl.py.
+# Only years we hold a source for are listed; add a year by adding a line and its source in README.md.
+2024: {first: 15060, additional: 5380}    # from the state's 2025 uniform application (its table is labelled 2024)
+2025: {first: 15650, additional: 5500}    # HHS ASPE detailed-guidelines-2025.pdf; tests/test_fpl.py checks it against the PDF
+2026: {first: 15960, additional: 5680}    # HHS ASPE detailed-guidelines-2026.pdf; tests/test_fpl.py checks it against the PDF

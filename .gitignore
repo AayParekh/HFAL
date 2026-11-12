@@ -29,13 +29,24 @@ data/manual/
 
 # Review sheets (hospital names from the golden sheet; your answers)
 data/review/
+data/report/
 data/attrition.csv
 
 # CSSNY's data dictionary and everything generated from it (get criteria_raw.csv from CSSNY, then run
 # scripts/criteria_from_csv.py)
 config/criteria_raw.csv
 config/criteria.yaml
+config/criteria_v2.yaml
+config/criteria_v4.yaml
+config/criteria_v6.yaml
+config/criteria_v7.yaml
 config/criteria_columns.yaml
 
 # Deliberate exclusions (hospital ids of the sample)
 data/exclusions.yaml
+
+# Hospitals that pass the exclusion policy (ids of the sample)
+data/working_set.csv
+
+# Monthly check reports (hospital ids of the sample)
+data/monitor/

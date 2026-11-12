@@ -9,8 +9,12 @@ def grade_hospital(records: dict[str, dict], criteria_ids: list[str], rubric: di
     - Each NO is one error. YES and N/A are not errors.
     - The letter comes from the error count (rubric "bands"). A NO on any
       "automatic_fail" criterion forces an F.
-    - UNCLEAR, NOT_FOUND, missing records, and unverified quotes make the grade "incomplete":
-      the error count is shown as a provisional minimum and no letter is issued.
+    - Open items (UNCLEAR, NOT_FOUND, missing records, unverified quotes) are listed in "needs_review" and never
+      change the answer itself. For the letter, the rubric decides:
+        open_items_count_as_no: true   each open item counts as an error (and an open automatic_fail criterion as
+                                       an automatic F); the letter is issued and the status is "provisional" until a
+                                       person resolves the open items. "confirmed_errors" counts the NO answers only.
+        otherwise (the default)        the grade is "incomplete": no letter, and "errors" is a provisional minimum.
     - "report_only" criteria are left out of all of the above and returned under "reported".
     """
     auto_ids = rubric.get("automatic_fail") or []
@@ -41,17 +45,28 @@ def grade_hospital(records: dict[str, dict], criteria_ids: list[str], rubric: di
             counts["needs_review"] += 1
             review.append(cid)
 
-    errors = counts[NO]
-    auto_fail = [c for c in failing if c in auto_ids]
+    confirmed = counts[NO]
     complete = counts["needs_review"] == 0
+    open_as_no = bool(rubric.get("open_items_count_as_no"))
+    counted = failing + review if open_as_no else failing      # the criteria that count against the letter
+    auto_fail = [c for c in counted if c in auto_ids]
+    errors = len(counted)
+    if complete:
+        status, grade_letter = "graded", letter(errors, auto_fail, rubric)
+    elif open_as_no:
+        status, grade_letter = "provisional", letter(errors, auto_fail, rubric)
+    else:
+        status, grade_letter = "incomplete", None
     return {
         "errors": errors,
-        "letter": letter(errors, auto_fail, rubric) if complete else None,
-        "status": "graded" if complete else "incomplete",
+        "confirmed_errors": confirmed,
+        "letter": grade_letter,
+        "status": status,
         "auto_fail": auto_fail,
         "counts": counts,
         "failing": failing,
         "needs_review": review,
+        "counted_as_no": review if open_as_no else [],
         "reported": reported,
     }
 

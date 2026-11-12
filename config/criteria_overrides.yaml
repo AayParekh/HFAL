@@ -1,5 +1,12 @@
 # The only hand-written input to scripts/criteria_from_csv.py besides criteria_raw.csv.
 # Everything else (which rows are criteria, ids, sections, YES/NO text) is derived from the CSV.
+#
+# THE RUBRIC (baseline, prompt v5). Every criterion below carries a rubric: ordered `checks` the model works through and
+# reports in its reason, the YES / NO meanings in plain words, and `notes` for the edge cases. `reading_rules`
+# (further down) apply to all criteria. This file is a DRAFT written by Claude from CSSNY's data dictionary and
+# what the first dev runs showed. It has NOT been reviewed by CSSNY or by anyone who knows the law. Wherever a
+# rule needed a fact we do not have (the 2007 PSA guideline; before prompt v5 also the text of the state's uniform
+# application) the rubric says so and tells the model to answer UNCLEAR; those gaps are listed in PLAN.md "Rubric review".
 
 # Expected number of criteria; the script warns if the CSV yields a different count.
 expected_count: 18
@@ -11,40 +18,291 @@ sections:
   APPLICATION: [application_form]
   POLICY SUMMARY: [plain_language_summary]
 
+# The state's blank uniform application, as text (config/reference/, built by scripts/build_reference_form.py).
+# It is added to the system prompt after the reading rules, for every hospital, in a <reference_form> block.
+# `hfal ask` also measures how much of its wording each hospital document contains (src/hfal/formcheck.py).
+reference_form: reference/uniform_application.txt
+# The official poverty figures for 2025 and 2026 (config/reference/fpl.yaml, checked against the HHS PDFs), in a
+# <reference_fpl> block after the form. Used by 2025_fpl_guidelines.
+reference_fpl: reference/fpl.yaml
+
+# Added to the system prompt, after the base instructions in src/hfal/ask.py, for every hospital.
+reading_rules: |
+  How to read the documents (these apply to every criterion):
+  - The documents are what was collected from the hospital's website. Each has an id, a url and "types" tags. The tags
+    come from a keyword rule and can be wrong: decide what a document is from its content.
+  - A hospital may post several versions or several documents of one kind (an old and a new application, a policy
+    shared by a whole health system). Use the most recent, judged by dates in the text (effective date, revision
+    date, a year in a title). If you cannot tell which is newer, or the versions disagree on the point being asked,
+    answer UNCLEAR and name the documents that disagree. The one exception is consistent_across_posted_documents,
+    which is about exactly such disagreements.
+  - A document about a health system or another hospital counts only for what it says about this hospital.
+  - A blank application is the form the hospital uses. Judge what the form says and contains (its questions, tables,
+    contact details, wording), not whether the fields are filled in. Lines of underscores are empty fields, not text.
+  - A translated copy says the same as the English original. Answer from the English text. Use translated copies
+    only to report languages.
+  - NOT_FOUND versus NO. Answer NOT_FOUND when no document of the kind the criterion needs is among those provided
+    (for example no plain-language summary at all): we cannot tell whether the hospital never posted it or whether it
+    was not collected, and a person will look. Answer NO only when a document of that kind is provided and it fails
+    the requirement. If a document might be the right kind but you cannot tell, answer UNCLEAR.
+  - Criteria worded in the negative (no time limit, no asset checks, no immigration barrier): YES means the thing is
+    absent from the documents, so read every document before answering YES. A YES that rests on absence still needs
+    a quote: quote the passage that describes the relevant process (for example how and when to apply), so a reader
+    can see where you looked. A NO needs the quote that shows the thing is there.
+  - When a criterion lists checks, work through them in order and write each result in your reason, for example
+    "A: yes - the application gives a phone number. B: no - it is not labelled as a help line." Then answer.
+  - Do not conclude compliance or non-compliance from what a document fails to mention, unless the criterion says
+    that absence is what it asks about.
+  - Never use your own knowledge of the law or of this hospital. If a criterion depends on a rule you are not given,
+    say so in the reason and answer UNCLEAR.
+  - <reference_form> holds the state's blank uniform financial assistance application and <reference_fpl> the official
+    federal poverty figures for 2025 and 2026. They are NOT among the hospital's documents: never quote them and never
+    give them as a source. They are there so you can compare a hospital's application with them (see
+    entire_uniform_application and 2025_fpl_guidelines).
+
 # Keyed by Excel column letter. `title` must match the start of the CSV title (guards against shifted rows).
 #   question   Replaces the question the script would derive (the CSV's own question line, else the title + "?").
-#              These were drafted by Claude where the CSV had no question. REVIEW AGAINST CSSNY'S WORDING.
+#              Where the CSV had no question these were drafted by Claude. REVIEW AGAINST CSSNY'S WORDING.
 #   yes_means / no_means   Required when the CSV row has no "YES =" / "NO =" lines but is still a criterion.
+#   guidance / yes_means / no_means   Also accepted on rows the CSV does define: our wording then REPLACES the
+#              CSV's text for that part ("" removes it). Used to reword text written for spreadsheet coders
+#              ("the number in this column"). CSSNY's CSV stays as it is; every reworded part is listed in the
+#              script's notes.
+#   checks     Ordered steps the model works through and reports in its reason (A, B, C ...).
+#   notes      Edge cases, one line each; shown to the model after YES / NO.
+# After changing any wording: rerun scripts/criteria_from_csv.py and bump prompt_version in settings.yaml.
 overrides:
+  # ---- Materials on website ------------------------------------------------------------------------------------
+  R:
+    title: Application Posted
+    checks:
+      - Is there a document that is a financial assistance application, meaning a form a patient fills in to apply?
+      - Is it this hospital's form (or a health-system form that names this hospital)?
+    yes_means: an application form is among the documents. Any application counts; it does not have to be the state's uniform application.
+    no_means: a document says there is no application available on the website, or the only application offered is not for this hospital.
+    notes:
+      - A page that only describes how to apply, or only links to a form that is not among the documents, is not an application.
+      - If financial assistance documents are provided but none is an application form, answer NOT_FOUND, not NO. It cannot be told whether the hospital never posted one or it was not collected.
+  S:
+    title: Policy Summary Posted
+    checks:
+      - Is there a document that is a plain-language summary of the financial assistance policy? A summary is short, written for patients, and says who qualifies and how to apply.
+      - Is it this hospital's summary (or a health-system summary that names this hospital)?
+    yes_means: a plain-language summary is among the documents and it is readable by a patient (it is not an empty page or a broken file).
+    no_means: a document says the summary is not available, or the only summary offered is not for this hospital.
+    notes:
+      - The full financial assistance policy is not a summary, and neither is the application. Decide by content, not by the file name.
+      - If no document is a summary, answer NOT_FOUND, not NO.
+  T:
+    title: Policy Statement posted
+    checks:
+      - Is there a document that is the hospital's financial assistance policy, the formal statement of who is eligible, what assistance is given and how it is decided?
+      - Is it this hospital's policy (or a health-system policy that names this hospital)?
+    yes_means: the financial assistance policy is among the documents and is readable.
+    no_means: a document says the policy is not available, or the only policy offered is not for this hospital.
+    notes:
+      - The summary and the application are not the policy statement. Decide by content, not by the file name.
+      - If no document is the policy, answer NOT_FOUND, not NO.
+  U:
+    title: Consistent across posted documents
+    checks:
+      - How many relevant documents are there (policy, summary, application, other financial assistance documents)? If only one, say so.
+      - Do they give the same income limit (% of the federal poverty level or dollar amounts) and the same discount levels?
+      - Do they agree on whether there is a time limit to apply, and on how and where to apply?
+      - Do they agree on the Primary Service Area and on the contact details?
+    yes_means: no document contradicts another on those points.
+    no_means: two or more documents contradict each other on one of those points. Quote one of the conflicting passages and name the other document in your reason.
+    notes:
+      - By CSSNY's convention a posted application that is itself non-compliant, and a supplemental document that gives different information from the policy, both count as inconsistent. This convention needs CSSNY's confirmation.
+      - Documents from different years that differ only because one is out of date are an inconsistency, not a version choice.
+      - With only one relevant document there is nothing to contradict. Answer YES only if that document does not contradict itself, and say in your reason that only one document was compared.
   V:
     title: Primary Service Area boundaries compliant
     question: Is the hospital's Primary Service Area defined in a way that complies with the 2007 guidelines, wherever it is listed?
+    guidance: |
+      This asks whether the definition of the Primary Service Area (PSA) follows the 2007 Department of Health (DOH) guidelines, wherever in the documents it is given. The rule, from the 2007 DOH letter:
+      - Each hospital with its own Permanent Facility Identifier must have a PSA. The minimum PSA is set by the Department.
+      - A hospital in any of the five New York City counties (New York/Manhattan, Kings/Brooklyn, Queens, Bronx, Richmond/Staten Island): the PSA must include all five of those counties, plus every other county in the State that is contiguous (shares a border) with the county the hospital is in.
+      - A hospital in any other county: the PSA must include the county the hospital is in, plus all counties contiguous with it. The Department also assigned some counties extra, non-contiguous counties, listed in a chart that is not given to you.
+      - A hospital may include more counties than the minimum, including counties outside its PSA, and is encouraged to. Extra counties are never a violation.
+    checks:
+      - Does any document define the PSA (lists counties, towns or zip codes served)? If none does, the answer is NOT_FOUND.
+      - List exactly what each document names as the PSA, and note whether the documents give the same area.
+      - Which county is the hospital in? Use the documents (address, city, county). If you cannot tell, the answer is UNCLEAR.
+      - If the hospital is in a New York City county, are all five NYC counties named? If any is missing, that is a clear failure.
+      - Is the hospital's own county named? If it is missing, that is a clear failure.
+      - Are the counties that border the hospital's county named? Check this only where you are certain which counties border it.
+    yes_means: the PSA is defined wherever it is listed, and it names the hospital's own county and all counties that border it (for a New York City hospital, all five NYC counties plus the bordering counties). Extra counties are fine.
+    no_means: a definition is missing a county the rule requires, such as the hospital's own county, one of the five NYC counties for a NYC hospital, or a county that borders the hospital's county. If a summary lists a PSA but leaves out a required county, this is NO. Do not answer NO because the PSA lists extra counties.
+    notes:
+      - You are not given the DOH chart of assigned non-contiguous counties. A PSA that includes the hospital's county and all bordering counties meets the minimum even if it omits the extra assigned counties, but you cannot confirm those, so say in your reason that they were not checked.
+      - Answer NO only for a missing county you can name with certainty (the hospital's own county, a missing NYC county, or a county you are certain borders the hospital's county). If you are unsure whether a county borders or what county the hospital is in, answer UNCLEAR and list the counties named. A person will check.
+      - If the PSA is stated only in towns, zip codes or a description, answer UNCLEAR and say so; do not convert it to counties yourself.
+      - A county missing from one document but present in another is an inconsistency (see consistent_across_posted_documents), but for this criterion judge the hospital's most recent PSA definition.
+      - Report the counties named in the psa_counties list as well as in your answer.
   W:
     title: No time limit to submit
     question: Is the hospital free of any time limit for submitting a financial assistance application?
+    guidance: By law there should be no time limit for submitting an application.
+    checks:
+      - Does any document (policy, summary, application) state a deadline or time window for applying, for example within a number of days of discharge or of the first bill?
+      - Is the deadline about submitting an application, as opposed to paying a bill, appealing, or the start of collection?
+    yes_means: no deadline for submitting an application is stated, or a document says applications are accepted at any time.
+    no_means: a document states a time limit for submitting an application.
+    notes:
+      - Quote the passage that says how or when to apply. For YES that passage shows where you looked.
+      - Deadlines for paying a bill or for collection activity are not application deadlines.
   Y:
     title: No evidence of asset checks
     question: Is there no evidence of asset checks (for example, a request for bank account statements)?
+    guidance: Asset checks are not allowed under the law. Evidence includes asking for bank account statements.
+    checks:
+      - Does any document ask the patient for information about assets, such as bank or savings account statements or balances, property, vehicles, investments or retirement accounts?
+      - Does any document say that assets are counted when deciding eligibility?
+    yes_means: no document asks for or counts assets. Proof of income (pay stubs, tax returns, a letter from an employer) is not an asset check.
+    no_means: a document asks for assets or counts them, for example by requesting bank account statements or having a field for savings.
+    notes:
+      - Per CSSNY, a request for bank account statements is evidence of an asset check. A form field for total assets or savings is too.
+      - Read the application's list of required documents and its questions as well as the policy.
   Z:
     title: No mention of immigration status as a barrier
     question: Do the materials avoid excluding people from financial assistance based on immigration status?
+    guidance: Compliant materials either do not mention immigration status or say explicitly that it does not matter.
+    checks:
+      - Does any document say or clearly imply that a patient must be a citizen, a permanent resident, or have a particular immigration status or documents to qualify?
+      - Does any document say that immigration status does not affect eligibility?
+    yes_means: nothing excludes people because of immigration status, or a document says immigration status does not matter.
+    no_means: a document says or clearly implies that immigration status excludes someone from assistance.
+    notes:
+      - A request for a Social Security number or for proof of citizenship or residency might be a barrier. Quote it. Answer NO only if the text says or clearly implies that status affects eligibility. If it only asks without saying what happens without it, answer UNCLEAR.
   AB:
     title: Languages available
     question: Is the financial assistance application available in languages other than English?
-    yes_means: the materials show the application is available in one or more non-English languages (list them in the reason)
-    no_means: the materials indicate the application is available only in English
+    guidance: By law applications must be available in the primary languages of the patients the hospital serves. This criterion is reported, not scored.
+    checks:
+      - Is there an application, or a statement about the application, that names a language other than English?
+      - List every language you find and the document each comes from.
+    yes_means: the materials show the application is available in at least one language other than English (list the languages in your reason).
+    no_means: the materials say the application is available only in English, or no non-English version exists although applications are offered.
+    notes:
+      - A translated copy of the application, or a statement that the application is available in a named language, counts. A statement that interpreters are available does not.
+      - Fill the languages list too, with a quote for each language.
+  # ---- Application -----------------------------------------------------------------------------------------------
+  AD:
+    title: ENTIRE Uniform Application
+    question: Is the hospital using the New York State uniform financial assistance application, in full?
+    guidance: By law hospitals must use only the uniform financial assistance form developed and provided by the state Department of Health.
+    checks:
+      - Is there an application form among the documents? If not, the answer is NOT_FOUND.
+      - Compare it with the state form in <reference_form>. Does it have every part of the state form, in substance - the patient and family information with the income table, health insurance status, signature block, the minimum eligibility and guidelines (timeline, patient rights and confidentiality; who is eligible; the 400% of poverty level rule), the poverty level table, the minimum discount rates, installment plans, and the request for proof of household income?
+      - Are the numbers and rules the same as the state form's (400% of the federal poverty level, discounts of up to 10% and 20%, installments of at most 5% of gross monthly income and 2% interest, 180 days before collection)?
+      - List any parts that are missing or changed, and any text the hospital added in place of form text.
+    yes_means: the form has all the parts of the state form with the same rules and numbers; it differs only in the ways listed in the notes.
+    no_means: a part of the state form is missing, a rule or number is changed, or the hospital uses its own form. Using only part of the state form is NO.
+    notes:
+      - These differences are expected and are not a reason for NO - the hospital's name and phone number in the contact sentence, the year and figures of the poverty level table, layout, a logo or header, a translation, a footnote defining "primary languages", and the order of the date.
+      - The state may have revised its form since the 2025 text in <reference_form>. Extra or reworded text that removes or contradicts nothing in the state form is not by itself a NO. If you cannot tell whether a difference is a revision or a change by the hospital, answer UNCLEAR and describe it.
+      - Judge only the application itself. A policy or summary around it, or a cover sheet or checklist next to it, is not part of the application.
+      - If there are several applications, use the most recent. If one is the state form and another is not, answer UNCLEAR and name them.
+      - After your answer the code measures how much of the state form's wording the document contains and may replace the answer (a close match becomes YES, a YES that does not match closely becomes UNCLEAR). Answer from your own comparison; do not try to guess the number.
   AE:
     title: Contact information included in application
     question: Is contact information for help with the application clearly listed on the application?
+    checks:
+      - On the application itself (not on the policy, the summary or a web page), is there a phone number, an email address or an office address for getting help with the application?
+      - Is it clearly presented as the place to call or write for help or questions about financial assistance or the application?
+    yes_means: the application itself clearly lists contact information for help with the application.
+    no_means: the application has no contact information for help, or the only contact details are in other documents.
+    notes:
+      - Contact details that appear only in the policy, the summary or elsewhere do not count. CSSNY looks at the application.
+      - A general hospital switchboard number counts only if the application presents it as the contact for financial assistance or application questions.
+      - Quote the line with the contact details and say in your reason what it is labelled.
   AG:
     title: Income & discount tables included in application
-    question: Does the application directly include tables showing the income levels and the corresponding discounts on care?
+    question: Does the application directly include a table or list showing the income levels and the discount on care that goes with each?
+    checks:
+      - Does the application itself contain a table or list of income levels (dollar amounts or percentages of the federal poverty level)?
+      - Does it show, for those income levels, the discount or assistance given?
+    yes_means: the application directly includes a table or list that pairs income levels with the corresponding discounts on care.
+    no_means: the application does not include it, even if the policy or the summary does.
+    notes:
+      - Only the application counts. A table that appears only in the policy or the summary is NO.
+      - A single sentence such as "up to 400% of the poverty level qualifies" is not a table of levels and discounts.
+  AH:
+    title: 2025 FPL Guidelines
+    question: Do the poverty-level dollar figures in the application match the official 2025 or 2026 federal poverty guidelines?
+    guidance: The income figures in the application should be based on the current federal poverty guidelines (FPL). <reference_fpl> gives the official figures for 2025 and 2026.
+    checks:
+      - Is there an application among the documents? If not, the answer is NOT_FOUND.
+      - Find the income table or dollar figures in the application. Does it state a year? Write down the figure for one person at the lowest level shown (for example 200%).
+      - Compare the figures with <reference_fpl>. Judge by the figures, not the heading, because a heading can name the wrong year. Ignore dollar signs, commas and cents. If the application gives monthly figures, multiply by 12. Which year do they equal - 2025, 2026, or neither? A table that shows only some household sizes or levels still matches if every figure shown equals the official one.
+      - If the heading's year and the figures disagree, say so.
+    yes_means: the application's figures equal the official 2025 figures or the official 2026 figures. Start your reason with "FPL year 2025 -" or "FPL year 2026 -".
+    no_means: the application has poverty-level figures that equal neither year (for example an earlier year's), or no poverty-level dollar figures at all. Start your reason with "FPL year none -" and give the figure you found.
+    notes:
+      - A hospital that updated to 2026 is as good as 2025; both are YES. Say which year you found.
+      - If one application has tables of both years or figures from different years, answer UNCLEAR and say which.
+      - If the figures equal neither year and the heading names a year after 2026, or the figures are unreadable (a picture, a garbled table), answer UNCLEAR and report what you can see.
+      - Percentages without dollar amounts are not poverty-level figures. If that is all the application has, answer NO.
+      - After your answer the code compares the application's amounts with the official figures for 2024, 2025 and 2026 and may replace the answer; answer from your own reading.
   AI:
     title: Max FPL
-    question: Does the hospital's financial assistance cover patients with income up to at least 400% of the federal poverty level?
+    question: Does the hospital's financial assistance reach patients with income up to at least 400% of the federal poverty level?
+    guidance: By law assistance should apply to patients with income up to 400% of the federal poverty level. This criterion is about the highest income level that receives assistance.
+    checks:
+      - Find the highest income level, as a percentage of the federal poverty level, up to which the policy, summary or application gives any discount or free care.
+      - If it is given in dollars only, convert it with <reference_fpl>. A dollar limit that equals the official 400% figure for that household size (2025 or 2026) is 400%. Say how you converted it.
+      - Is that level 400% or more?
+    yes_means: assistance reaches income of at least 400% of the federal poverty level.
+    no_means: the highest income level that receives assistance is below 400%.
+    notes:
+      - The highest level that receives any discount counts, even if the discount shrinks as income rises (for example free care to 200% and a discount to 400% is 400%).
+      - If the documents give different maximums, use the most recent and say which. If they cannot be reconciled, answer UNCLEAR.
+      - If only dollar amounts are given and they equal no official figure in <reference_fpl>, so you cannot tell the percentage, answer UNCLEAR.
+      - After your answer the code looks in the application for a clear statement that assistance reaches 400% (for example "Individuals up to 400% of the federal poverty level are eligible"). If it finds one and you answered NO, the answer becomes UNCLEAR for a person to check. Answer from your own reading of all the documents.
   AJ:
     title: Installments capped at 5% of monthly income
     question: Does the application explicitly state that installment payments are capped at 5% of gross monthly income?
+    guidance: For payment plans the law requires that monthly payments are capped at 5% of gross monthly income. It must be stated explicitly.
+    checks:
+      - Does the application describe installment or payment plans? If there is no application among the documents, the answer is NOT_FOUND.
+      - Does it state a cap on the monthly payment?
+      - Is the cap 5% of gross monthly income, or lower?
+    yes_means: the application explicitly states that installment payments are capped at 5% of gross monthly income (or at a lower share).
+    no_means: it is not explicitly stated in the application. This includes an application that mentions payment plans without the cap, or states a higher cap.
+    notes:
+      - Only the application counts. A statement in the policy or the summary does not satisfy this criterion.
+      - A cap of "5% of income" without saying gross monthly is close; quote it and answer YES only if it plainly means monthly gross income, otherwise UNCLEAR.
+  # ---- Plain-language summary --------------------------------------------------------------------------------------
   AL:
     title: Primary Service Area listed in summary
     question: Does the policy summary list the Primary Service Area?
+    guidance: By law the Primary Service Area must be listed in the hospital's summary. Only the summary counts.
+    checks:
+      - Is there a plain-language summary among the documents? If not, the answer is NOT_FOUND.
+      - Does the summary itself name the Primary Service Area (counties, towns or zip codes the hospital serves)?
+    yes_means: the summary names the Primary Service Area.
+    no_means: a summary is provided and it does not name the Primary Service Area. If the area is named only in the policy or elsewhere, this is still NO.
+    notes:
+      - Do not count the policy, the application or a web page. If there is no summary at all, answer NOT_FOUND, not NO.
+      - Also list the counties it names in the psa_counties list.
+  AM:
+    title: Means of applying for assistance explained
+    question: Does the policy summary explain how to apply for assistance?
+    checks:
+      - Is there a plain-language summary among the documents? If not, the answer is NOT_FOUND.
+      - Does the summary tell the patient how to apply, for example to get and return the application, where, and whom to contact?
+    yes_means: the summary explains how to apply.
+    no_means: a summary is provided and it does not explain how to apply.
+    notes:
+      - Only the summary counts, not the policy or the application.
+  AN:
+    title: Income levels used to determine assistance
+    question: Does the policy summary state the income levels that determine assistance (dollar amounts or percentages of the federal poverty level)?
+    checks:
+      - Is there a plain-language summary among the documents? If not, the answer is NOT_FOUND.
+      - Does the summary state income levels or poverty-level percentages that decide who gets assistance?
+    yes_means: the summary states the income levels that determine assistance.
+    no_means: a summary is provided and it does not state them.
+    notes:
+      - Only the summary counts, not the policy or the application.

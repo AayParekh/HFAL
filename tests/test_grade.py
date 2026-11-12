@@ -68,6 +68,43 @@ def test_unverified_quote_is_treated_as_needs_review():
     assert g["status"] == "incomplete" and g["needs_review"] == ["c1"] and g["errors"] == 0
 
 
+OPEN_AS_NO = {**RUBRIC, "open_items_count_as_no": True}
+
+
+def test_open_items_count_as_no_for_the_letter_when_the_rubric_says_so():
+    g = grade_hospital(records(no=["c3"], c1="UNCLEAR", c2="NOT_FOUND"), IDS, OPEN_AS_NO)
+    assert g["status"] == "provisional" and g["letter"] == "B"
+    assert g["errors"] == 3 and g["confirmed_errors"] == 1
+    assert g["failing"] == ["c3"] and g["needs_review"] == ["c1", "c2"] and g["counted_as_no"] == ["c1", "c2"]
+
+
+def test_open_items_push_the_letter_down_a_band():
+    g = grade_hospital(records(no=["c1", "c2", "c3"], c4="UNCLEAR"), IDS, OPEN_AS_NO)
+    assert g["letter"] == "C" and g["confirmed_errors"] == 3 and g["errors"] == 4
+
+
+def test_open_item_on_an_automatic_fail_criterion_gives_F():
+    g = grade_hospital(records(app="NOT_FOUND"), IDS, OPEN_AS_NO)
+    assert g["letter"] == "F" and g["auto_fail"] == ["app"] and g["status"] == "provisional"
+
+
+def test_unverified_quote_counts_as_no_for_the_letter():
+    recs = records()
+    recs["c1"] = rec("YES", verified=False)
+    g = grade_hospital(recs, IDS, OPEN_AS_NO)
+    assert g["letter"] == "B" and g["counted_as_no"] == ["c1"]
+
+
+def test_no_open_items_is_graded_not_provisional_under_either_rule():
+    assert grade_hospital(records(no=["c1"]), IDS, OPEN_AS_NO)["status"] == "graded"
+    assert grade_hospital(records(no=["c1"]), IDS, RUBRIC)["counted_as_no"] == []
+
+
+def test_the_project_rubric_counts_open_items_as_no():
+    from hfal import paths
+    assert paths.rubric().get("open_items_count_as_no") is True
+
+
 def test_na_is_not_an_error():
     g = grade_hospital(records(c1="N/A", c2="N/A"), IDS, RUBRIC)
     assert g["letter"] == "A" and g["counts"]["N/A"] == 2
