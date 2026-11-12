@@ -42,7 +42,12 @@ listing options. Python environment via uv (not conda). Works in VS Code.
 - The GitHub repo must be private. Also git-ignored: CSSNY's data dictionary `config/criteria_raw.csv` and the
   criteria files generated from it, `data/hospitals.csv`, `data/sources.csv`, `data/exclusions.yaml`,
   `data/attrition.csv`, `data/review/`, `data/report/`, `data/monitor/`, `runs/`. Never write hospital ids of the sample into tracked files
-  (PLAN.md, docs, tests, config): use counts, or invented ids and names in test fixtures. Tests that need the
+  (PLAN.md, docs, tests, config): use counts, or invented ids and names in test fixtures.
+  **One exception (decided Nov 11, owner): `results/`**, written by `hfal report`, is tracked so a dashboard can read
+  it from the private repo (`results/latest/`). It is our own results from public websites and may name hospitals
+  (so it shows which hospitals are in dev). It must never carry CSSNY's labels or anything derived from them: no
+  golden label, letter or note, no judge or review data, no corrected labels (`tests/test_report.py` checks the
+  columns). Raw documents (`data/raw`, hundreds of MB and growing) stay out of git; S3 is their later home. Tests that need the
   CSSNY files skip when they are absent; README "Files that are not in the repository" says how to rebuild.
 
 ## Golden sheet layout (column names only)
@@ -115,9 +120,10 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
 - **Attrition is tracked**: `scripts/attrition.py` (stage losses computed; deliberate exclusions with reasons
   in the git-ignored `data/exclusions.yaml`; PLAN.md shows counts only). Report attrition with every result.
 - **Output:** JSON per hospital under `runs/{run_id}/`. `hfal report --run RUN_ID [--run ...]` (`report.py`) turns
-  runs into `data/report/{date}/` (git-ignored): `hospitals.csv`, `criteria.csv` (answer, what it means for the letter,
-  the plain-language explanation, the verified quote with document link and page, the law cited) and `report.html`.
-  No model call, no golden labels.
+  runs into `results/{date}/` and copies them to `results/latest/` (both tracked; see DATA HANDLING): `hospitals.csv`,
+  `criteria.csv` (answer, what it means for the letter, the plain-language explanation, the verified quote with
+  document link and page, the law cited), `report.html`, `meta.json`. No model call, no golden labels. A dashboard
+  reads `results/latest/` and takes the letter from `hospitals.csv`; it never recomputes grades.
 - **Storage:** content-addressed files under `data/raw/{hospital_id}/files/`, dated manifests recording
   status and change detection by hash. Raw data is git-ignored.
 - **Monthly check is a scheduled script, not a Claude skill.** `hfal monitor` (built, `monitor.py`; dev working set

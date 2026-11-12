@@ -29,6 +29,7 @@ data/manual/
 
 # Review sheets (hospital names from the golden sheet; your answers)
 data/review/
+# Old location of `hfal report` output; it now writes to results/, which IS tracked (CLAUDE.md, DATA HANDLING)
 data/report/
 data/attrition.csv
 

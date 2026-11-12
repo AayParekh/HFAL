@@ -2,7 +2,9 @@
 
     uv run hfal report --run RUN_A [--run RUN_B ...] [--out DIR]
 
-Writes to data/report/{today}/ (git-ignored: it names hospitals of the sample):
+Writes to results/{today}/ and copies the same files to results/latest/, the fixed place a dashboard reads. Both are
+TRACKED in git (decided Nov 11): our own results may name hospitals, but nothing here may come from CSSNY's labels
+(no golden label, no judge or review data, no corrected labels). With --out, writes only to that folder.
   hospitals.csv   one row per hospital: letter, status, errors, what failed, what is open, languages, counties.
   criteria.csv    one row per hospital and criterion: the answer, what it means for the letter, the plain-language
                   explanation (config/explanations.yaml), the hospital's own words (the verified quote, with the
@@ -17,6 +19,7 @@ The answers are shown as they are: an UNCLEAR or NOT_FOUND is never shown as a N
 import csv
 import html
 import json
+import shutil
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -25,7 +28,8 @@ from . import explain, paths
 from .grade import grade_hospital
 from .schema import NA, NO, YES, effective_answer
 
-OUT = paths.DATA / "report"
+OUT = paths.ROOT / "results"
+FILES = ("hospitals.csv", "criteria.csv", "report.html", "meta.json")
 HOSPITAL_FIELDS = ["hospital_id", "name", "letter", "status", "errors", "confirmed_errors", "open_items",
                    "automatic_fail", "not_met", "open", "languages", "psa_counties", "landing_url",
                    "run_id", "prompt_version", "model"]
@@ -247,17 +251,32 @@ def render_html(hospitals: list[dict], rows: list[dict], meta: dict) -> str:
     return "\n".join(out)
 
 
-def write(run_ids: list[str], out_dir: Path | None = None) -> Path:
-    hospitals, rows, meta = build(run_ids)
-    out_dir = out_dir or OUT / meta["generated_on"]
+def save(hospitals: list[dict], rows: list[dict], meta: dict, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _csv(out_dir / "hospitals.csv", HOSPITAL_FIELDS, hospitals)
     _csv(out_dir / "criteria.csv", CRITERION_FIELDS, rows)
     (out_dir / "report.html").write_text(render_html(hospitals, rows, meta), encoding="utf-8")
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def publish_latest(dated: Path, root: Path = OUT) -> Path:
+    """Copy a dated report to root/latest/, replacing the files there."""
+    latest = root / "latest"
+    latest.mkdir(parents=True, exist_ok=True)
+    for name in FILES:
+        shutil.copyfile(dated / name, latest / name)
+    return latest
+
+
+def write(run_ids: list[str], out_dir: Path | None = None, root: Path = OUT) -> Path:
+    hospitals, rows, meta = build(run_ids)
+    target = out_dir or root / meta["generated_on"]
+    save(hospitals, rows, meta, target)
     letters = Counter(h["letter"] or "none" for h in hospitals)
     print(f"{len(hospitals)} hospitals from {len(run_ids)} runs; letters "
           + ", ".join(f"{k} {v}" for k, v in sorted(letters.items()))
           + "; status " + ", ".join(f"{k} {v}" for k, v in sorted(Counter(h['status'] for h in hospitals).items())))
-    print(f"wrote {out_dir}/ (hospitals.csv, criteria.csv, report.html, meta.json)")
-    return out_dir
+    print(f"wrote {target}/ ({', '.join(FILES)})")
+    if out_dir is None:
+        print(f"copied to {publish_latest(target, root)}/ (the dashboard's fixed path); commit results/ to share it")
+    return target

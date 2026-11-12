@@ -78,7 +78,9 @@ Rules for the eval set:
       settings switched to v7 for the next paid run (v5 and v6 not run further)
 - [x] (Nov 11) Grades: open items count as NO for the letter only; status `provisional` (`config/rubric.yaml`)
 - [x] (Nov 11) `hfal report`: readable results per hospital and criterion, with the plain-language explanations, verified
-      quotes and links (`data/report/{date}/`); first report made for the 20 v5 hospitals
+      quotes and links; first report made for the 20 v5 hospitals. Written to `results/{date}/` and `results/latest/`,
+      which are tracked in the private repo for a future dashboard (decided Nov 11; CLAUDE.md, DATA HANDLING). S3 is
+      left for the raw documents, later
 - [x] (Nov 11) Corrected labels (`scripts/build_corrected_labels.py`) and `hfal score` against the sheet as is and the
       corrected labels side by side (see "Corrected labels")
 
@@ -260,7 +262,8 @@ are reported.
 2. Schedule it monthly with a launchd job on the Mac (catches up after sleep, unlike cron); example plist in the
    repo. A server or AWS timer is the long-term home.
 3. Data model for the edit front end: a sources table and an overrides table, each with who / when / why. *The
-   results side exists: `hfal report` writes `hospitals.csv` and `criteria.csv` (README "Results report").*
+   results side exists: `hfal report` writes `hospitals.csv` and `criteria.csv` to `results/latest/`, tracked in the
+   private repo (README "Results report").*
 4. ~~If the September PDFs are obtainable, score dev on them as well and report the gap.~~ Not available from CSSNY
    (Nov 11). The Internet Archive may hold copies of some hospitals' pages and PDFs from September 2025; scoring on
    them would need another paid run. Corrected labels stand in for now.

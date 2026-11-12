@@ -21,7 +21,7 @@ data/hospitals.csv -> sources -> fetch -> discover -> fetch -> extract -> tag ->
 | attrition | `uv run python scripts/attrition.py` | manifests, discovery records | `data/attrition.csv`, `data/working_set.csv` (the hospitals `ask` runs on) |
 | ask | `uv run hfal ask` | text, tags, `config/criteria.yaml` | `runs/{run_id}/{hospital_id}.json` |
 | grade | `uv run hfal grade --run RUN_ID` | run JSON, `config/rubric.yaml` | `runs/{run_id}/grades.csv` (letter, status, errors, confirmed errors, open items) |
-| report | `uv run hfal report --run RUN_ID [--run ...]` | run JSON, `config/explanations.yaml`, `data/hospitals.csv` | `data/report/{date}/`: `hospitals.csv`, `criteria.csv`, `report.html` (see "Results report") |
+| report | `uv run hfal report --run RUN_ID [--run ...]` | run JSON, `config/explanations.yaml`, `data/hospitals.csv` | `results/{date}/` and `results/latest/` (tracked): `hospitals.csv`, `criteria.csv`, `report.html`, `meta.json` (see "Results report") |
 | score | `uv run hfal score --run RUN_ID` | run JSON, `golden/golden.csv`, `golden/golden_grades.csv`, `data/review/corrected_labels.csv` if present | per-criterion table, pooled totals (accuracy, coverage, false YES / NO, precision / recall) and letter-grade agreement, against CSSNY's sheet as it is **and** against corrected labels; `runs/{run_id}/metrics.csv`, `metrics_corrected.csv`, `summary.json`, `diff.csv` |
 | judge | `uv run hfal judge --run RUN_ID` | run JSON, golden labels (dev only) | `runs/{run_id}/judge.csv` |
 | hand review | `scripts/judge_review.py merge\|split`, `scripts/build_corrected_labels.py` | runs' `judge.csv`, your buckets | `data/review/judge_review.csv`, `data/review/corrected_labels.csv` (see "Hand review and corrected labels") |
@@ -147,7 +147,7 @@ sent as a JSON schema (structured outputs): `claude-sonnet-5-5` rejects forced t
 ## Files that are not in the repository
 
 CSSNY's inputs and everything derived from them are git-ignored: `golden/`, `data/sample*`, `data/hospitals.csv`,
-`data/sources.csv`, `data/exclusions.yaml`, `data/attrition.csv`, `data/review/`, `data/report/`, `data/monitor/`,
+`data/sources.csv`, `data/exclusions.yaml`, `data/attrition.csv`, `data/review/`, `data/monitor/`,
 `runs/`, and CSSNY's data dictionary `config/criteria_raw.csv` with the criteria generated from it
 (`config/criteria.yaml`, `config/criteria_v6.yaml`, `config/criteria_v7.yaml`, `config/criteria_columns.yaml`). After
 cloning, get these from CSSNY and rebuild:
@@ -186,7 +186,8 @@ data/manual/{hospital_id}/                          files dropped in by hand
 data/hospitals.csv                                  the hospital table (see "Hospitals and sources")
 data/review/                                        review sheets (git-ignored): judge_review.csv (hand buckets),
                                                     corrected_labels.csv (generated from them), doc_check.csv
-data/report/{YYYY-MM-DD}/                           `hfal report` output: hospitals.csv, criteria.csv, report.html
+results/{YYYY-MM-DD}/, results/latest/              `hfal report` output (TRACKED): hospitals.csv, criteria.csv,
+                                                    report.html, meta.json
 data/monitor/{YYYY-MM-DD}/                          `hfal monitor` change report
 data/text/{hospital_id}/{sha8}.json                 extracted pages (+ needs_ocr flag, + extractor stamp: the
                                                     extractor version and the PDF / HTML library versions; `hfal
@@ -305,10 +306,13 @@ uv run python scripts/judge_review.py split [--dry-run]               # optional
 ## Results report (`hfal report`)
 
 ```bash
-uv run hfal report --run RUN_ID [--run RUN_ID ...]    # -> data/report/{today}/
+uv run hfal report --run RUN_ID [--run RUN_ID ...]    # -> results/{today}/, copied to results/latest/
+git add results && git commit -m "Results from RUN_ID"  # share it through the private repo
 ```
 
-No model call and no golden labels. A hospital found in several runs is reported from the newest. Files:
+No model call and no golden labels. A hospital found in several runs is reported from the newest. `results/` is the
+one tracked folder that names hospitals (CLAUDE.md, DATA HANDLING): it holds only our own results, never CSSNY's
+labels or the review data. `--out DIR` writes somewhere else instead (and leaves `latest/` alone). Files:
 
 - `hospitals.csv`: one row per hospital: letter, status (`graded` / `provisional`), errors counted for the letter,
   confirmed errors, open items, automatic F, what was not met, what is open, languages, service-area counties, link.
@@ -318,8 +322,9 @@ No model call and no golden labels. A hospital found in several runs is reported
   reviewers, not the public).
 - `report.html`: the same as one page to open in a browser.
 
-A dashboard reads both CSVs (joined on `hospital_id`) and takes the letter from `hospitals.csv`; it never works the
-grade out itself.
+A dashboard reads both CSVs from `results/latest/` (joined on `hospital_id`) and takes the letter from
+`hospitals.csv`; it never works the grade out itself. Dated folders keep the history. The downloaded documents
+(`data/raw`, about 400 MB and growing) stay out of git; S3 is their later home.
 
 ## Monthly check (`hfal monitor`)
 

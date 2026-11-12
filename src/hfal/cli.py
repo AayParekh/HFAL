@@ -198,7 +198,7 @@ def main() -> None:
     s = sub.add_parser("report", help="readable results (CSV + HTML) with plain-language explanations, from one or "
                                       "more runs; no model call, no golden labels")
     s.add_argument("--run", action="append", required=True, help="run_id folder under runs/; repeat for several runs")
-    s.add_argument("--out", help="output folder (default data/report/TODAY/)")
+    s.add_argument("--out", help="output folder (default results/TODAY/, also copied to results/latest/)")
     args = p.parse_args()
 
     if args.cmd == "ping":

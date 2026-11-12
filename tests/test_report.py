@@ -73,6 +73,22 @@ def test_verified_evidence_links_the_document_and_page():
     assert a["explanation"] == "Posted." and a["rule"] == "" and a["law"].endswith("§ 2807-k(9)")
 
 
+def test_save_and_publish_latest_copy_every_file(tmp_path):
+    s, rows = _build()
+    meta = {"hospitals": 1, "generated_on": "2026-11-11", "prompt_versions": ["v7"], "models": ["m"],
+            "explanations_version": "test", "open_items_count_as_no": True}
+    dated = tmp_path / "2026-11-11"
+    report.save([s], rows, meta, dated)
+    latest = report.publish_latest(dated, tmp_path)
+    for name in report.FILES:
+        assert (latest / name).read_bytes() == (dated / name).read_bytes()
+
+
+def test_report_columns_carry_no_golden_or_review_data():
+    banned = {"golden", "cssny_label", "corrected_label", "human_bucket", "bucket", "who_is_right"}
+    assert not banned & set(report.HOSPITAL_FIELDS + report.CRITERION_FIELDS)
+
+
 def test_html_escapes_text_and_shows_the_letter():
     s, rows = report.hospital_report("fake001", "run1", DATA, CRITERIA, RUBRIC, TEMPLATES,
                                      {"name": "Invented <b>General</b>", "landing_url": ""})
