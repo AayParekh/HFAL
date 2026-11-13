@@ -14,7 +14,7 @@ export function FacilityMap({ rows }: { rows: FacilityRow[] }) {
         bounds={[[40.45, -79.8], [45.05, -71.8]]}
         boundsOptions={{ padding: [12, 12] }}
         scrollWheelZoom={false}
-        className="relative z-0 isolate h-36 w-full rounded-md"
+        className="relative z-0 isolate h-[280px] w-full rounded-md"
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

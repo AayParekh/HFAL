@@ -1,10 +1,12 @@
 import { TriangleAlert } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { CRITERIA_COPY } from '@/content/criteria-copy'
 import { pluralize } from '@/lib/format'
 import { GRADE_BANDS } from '@/lib/grading'
 import type { PublishedReportStatus } from '@/lib/facility-rows'
-import type { FacilityGrade } from '@/types'
+import type { Assessment, Criterion, FacilityGrade } from '@/types'
+import { criterionMatchesFilter, type CriteriaFilter } from './criteria-filter'
 
 function questionFor(code: string): string {
   return (CRITERIA_COPY as Record<string, { question: string } | undefined>)[code]?.question ?? code
@@ -13,19 +15,50 @@ function questionFor(code: string): string {
 export function GradeExplainer({
   grade,
   publishedReport,
+  criteria,
+  assessments,
+  activeFilter,
+  onFilterChange,
 }: {
   grade: FacilityGrade
   publishedReport: PublishedReportStatus | null
+  criteria: Criterion[]
+  assessments: Assessment[]
+  activeFilter: CriteriaFilter | null
+  onFilterChange: (filter: CriteriaFilter | null) => void
 }) {
   if (publishedReport) {
+    const metCount = criteria.filter((criterion) => criterionMatchesFilter(criterion, assessments, 'met')).length
     return (
-      <p className="text-sm">
-        <span className="font-semibold">Published report grade: {grade.grade}.</span>{' '}
-        {pluralize(publishedReport.notMetCount, 'criterion', 'criteria')} not met;{' '}
-        {publishedReport.openCount === 0
-          ? 'no open criteria.'
-          : `${pluralize(publishedReport.openCount, 'criterion', 'criteria')} open for review.`}
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={activeFilter === 'met' ? 'secondary' : 'outline'}
+          aria-pressed={activeFilter === 'met'}
+          onClick={() => onFilterChange(activeFilter === 'met' ? null : 'met')}
+        >
+          {pluralize(metCount, 'criterion', 'criteria')} met
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={activeFilter === 'open' ? 'secondary' : 'outline'}
+          aria-pressed={activeFilter === 'open'}
+          onClick={() => onFilterChange(activeFilter === 'open' ? null : 'open')}
+        >
+          {pluralize(publishedReport.openCount, 'criterion', 'criteria')} open for review
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={activeFilter === 'notMet' ? 'secondary' : 'outline'}
+          aria-pressed={activeFilter === 'notMet'}
+          onClick={() => onFilterChange(activeFilter === 'notMet' ? null : 'notMet')}
+        >
+          {pluralize(publishedReport.notMetCount, 'criterion', 'criteria')} not met
+        </Button>
+      </div>
     )
   }
 

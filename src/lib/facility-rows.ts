@@ -1,5 +1,5 @@
 import { gradeFacility } from '@/lib/grading'
-import type { Criterion, FacilityGrade, FacilityListItem, Grade, GradeResult } from '@/types'
+import type { Criterion, FacilityGrade, FacilityListItem, Grade, GradeResult, PackageLanguage, SlimAssessment } from '@/types'
 
 export type PublishedReportStatus = {
   status: 'graded' | 'provisional'
@@ -43,6 +43,8 @@ export interface FacilityRow {
   zip: string
   coordinates: [number, number] | null
   faPageUrl: string | null
+  languages: PackageLanguage[]
+  assessments: SlimAssessment[]
   lastRetrievedAt: string | null
   grade: FacilityGrade
   publishedReport: PublishedReportStatus | null
@@ -64,6 +66,8 @@ export function buildFacilityRows(items: readonly FacilityListItem[], criteria: 
       zip: item.facility.zip,
       coordinates: item.facility.coordinates ?? null,
       faPageUrl: item.fa_page_url,
+      languages: item.languages,
+      assessments: item.assessments,
       lastRetrievedAt: item.last_retrieved_at,
       grade: applyPublishedGrade(calculated, item.stored_grade),
       publishedReport: getPublishedReportStatus(item.stored_grade),

@@ -23,6 +23,7 @@ export function useFacilityRows() {
 
   return {
     rows,
+    criteria: criteriaQuery.data ?? [],
     asOf: facilitiesQuery.data?.as_of ?? null,
     auditRound: facilitiesQuery.data?.audit_round ?? null,
     isPending: facilitiesQuery.isPending || criteriaQuery.isPending,

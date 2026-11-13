@@ -27,6 +27,7 @@ export function formatMeasuredValue(valueType: Criterion['value_type'], value: n
 }
 
 export function languageName(code: string): string {
+  if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(code)) return code
   try {
     return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code
   } catch {

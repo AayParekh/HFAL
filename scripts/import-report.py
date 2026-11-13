@@ -147,6 +147,129 @@ def report_locations(root):
     return locations
 
 
+def report_languages(root):
+    languages = {}
+    for table in descendants(root, "table"):
+        rows = list(descendants(table, "tr"))
+        header = next(
+            (
+                [text(child).lower() for child in row.children if isinstance(child, Node) and child.tag == "th"]
+                for row in rows
+                if any(isinstance(child, Node) and child.tag == "th" for child in row.children)
+            ),
+            [],
+        )
+        if "languages" not in header:
+            continue
+        language_index = header.index("languages")
+        for row in rows:
+            cells = direct_cells(row)
+            if len(cells) <= language_index:
+                continue
+            hospital_link = next(
+                (
+                    anchor for anchor in descendants(cells[0], "a")
+                    if re.fullmatch(r"#h\d+", anchor.attrs.get("href", ""))
+                ),
+                None,
+            )
+            if hospital_link is None:
+                continue
+            names = [name.strip() for name in text(cells[language_index]).split(";") if name.strip()]
+            languages[hospital_link.attrs["href"][2:]] = [
+                {"doc_type": "application", "language_code": name}
+                for name in names
+            ]
+        break
+    return languages
+
+
+def merge_records(existing, incoming, key):
+    incoming_by_key = {record[key]: record for record in incoming}
+    existing_keys = {record[key] for record in existing}
+    merged = [incoming_by_key.get(record[key], record) for record in existing]
+    merged.extend(record for record in incoming if record[key] not in existing_keys)
+    return merged
+
+
+def assessment_key(assessment):
+    scope = assessment["scope"]
+    return (
+        assessment["audit_round"],
+        assessment["criterion_code"],
+        scope["type"],
+        scope["id"],
+    )
+
+
+def merge_assessments(existing, incoming, package_ids, pfis, replaced_document_ids):
+    incoming_by_key = {assessment_key(record): record for record in incoming}
+    merged = []
+    used_keys = set()
+    for record in existing:
+        is_updated = (
+            record["scope"]["id"] in package_ids | pfis
+            or record["evidence_document_id"] in replaced_document_ids
+        )
+        key = assessment_key(record)
+        if not is_updated:
+            merged.append(record)
+        elif key in incoming_by_key:
+            merged.append(incoming_by_key[key])
+            used_keys.add(key)
+    merged.extend(record for key, record in incoming_by_key.items() if key not in used_keys)
+    return merged
+
+
+def merge_report(existing, incoming):
+    incoming_pfis = {facility["pfi"] for facility in incoming["facilities"]}
+    incoming_package_ids = {facility["package_id"] for facility in incoming["facilities"]}
+    incoming_document_ids = {document["document_id"] for document in incoming["documents"]}
+    old_facilities = {facility["pfi"]: facility for facility in existing["facilities"]}
+    old_document_ids = {
+        document["document_id"] for document in existing["documents"]
+        if document["package_id"] in incoming_package_ids
+    }
+
+    for facility in incoming["facilities"]:
+        old = old_facilities.get(facility["pfi"])
+        if old is None:
+            continue
+        for field in ("address", "zip", "county", "ocn", "ccn", "system_id", "phone", "coordinates"):
+            if not facility[field]:
+                facility[field] = old.get(field)
+
+    return {
+        **existing,
+        **incoming,
+        "systems": existing["systems"],
+        "operators": existing["operators"],
+        "criteria": incoming["criteria"],
+        "facilities": merge_records(existing["facilities"], incoming["facilities"], "pfi"),
+        "packages": merge_records(existing["packages"], incoming["packages"], "package_id"),
+        "documents": merge_records(
+            [
+                record for record in existing["documents"]
+                if record["package_id"] not in incoming_package_ids
+                or record["document_id"] in incoming_document_ids
+            ],
+            incoming["documents"],
+            "document_id",
+        ),
+        "facility_psa": [
+            record for record in existing["facility_psa"] if record["facility_pfi"] not in incoming_pfis
+        ] + incoming["facility_psa"],
+        "assessments": merge_assessments(
+            existing["assessments"],
+            incoming["assessments"],
+            incoming_package_ids,
+            incoming_pfis,
+            old_document_ids,
+        ),
+        "grade_results": merge_records(existing["grade_results"], incoming["grade_results"], "package_id"),
+    }
+
+
 def document_type(code, url):
     if code in APPLICATION_CODES:
         return "application"
@@ -172,10 +295,15 @@ def main():
         node for node in descendants(parser.root, "details")
         if re.fullmatch(r"h\d+", node.attrs.get("id", ""))
     ]
-    if len(hospitals) != 77:
-        raise SystemExit(f"Expected 77 hospital records, found {len(hospitals)}")
+    if not hospitals:
+        raise SystemExit("No hospital records found in report")
+    hospital_ids = [hospital.attrs["id"][1:] for hospital in hospitals]
+    if len(hospital_ids) != len(set(hospital_ids)):
+        raise SystemExit("Report contains duplicate hospital IDs")
 
     base = json.loads((ROOT / "src/api/mock/data/generated.json").read_text())
+    destination = ROOT / "src/api/mock/data/report.json"
+    existing = json.loads(destination.read_text()) if destination.exists() else None
     facilities, packages, documents, assessments, grade_results = [], [], [], [], []
     seen_documents = {}
     audit_round = "2026-11"
@@ -184,6 +312,7 @@ def main():
         raise SystemExit("Could not find the report generation date")
     report_date = generated_date.group(1)
     locations = report_locations(parser.root)
+    languages_by_pfi = report_languages(parser.root)
 
     for hospital in hospitals:
         pfi = hospital.attrs["id"][1:]
@@ -214,7 +343,7 @@ def main():
         })
         packages.append({
             "package_id": package_id, "owner_system_id": None, "landing_url": landing_url,
-            "languages": [],
+            "languages": languages_by_pfi.get(pfi, []),
         })
 
         table = next(descendants(hospital, "table"))
@@ -323,18 +452,23 @@ def main():
         "rule": "Supplemental report outcome; not included in the published grade",
         "is_auto_fail": False, "excluded_from_grade": True,
     }]
-    output = {
+    incoming = {
         "audit_round": audit_round, "rubric_version": "report-v5", "criteria": criteria,
         "systems": [], "operators": [], "facilities": facilities, "packages": packages,
         "documents": documents, "facility_psa": [], "assessments": assessments,
         "grade_results": grade_results,
     }
-    destination = ROOT / "src/api/mock/data/report.json"
+    existing_pfis = {facility["pfi"] for facility in existing["facilities"]} if existing else set()
+    output = merge_report(existing, incoming) if existing else incoming
     destination.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")
     distribution = {grade: sum(item["grade"] == grade for item in grade_results) for grade in "ABCDF"}
     statuses = {status: sum(item["report_status"] == status for item in grade_results) for status in ("graded", "provisional")}
-    print(f"Wrote {len(facilities)} hospitals and {len(assessments)} criterion results to {destination}")
-    print(f"Published grades: {distribution}; report statuses: {statuses}")
+    new_count = len(set(hospital_ids) - existing_pfis) if existing else len(facilities)
+    print(
+        f"Updated {len(facilities) - new_count} existing hospitals and added {new_count} new hospitals; "
+        f"dataset now has {len(output['facilities'])} hospitals and {len(output['assessments'])} criterion results at {destination}"
+    )
+    print(f"Incoming published grades: {distribution}; report statuses: {statuses}")
 
 
 if __name__ == "__main__":

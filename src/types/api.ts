@@ -6,6 +6,7 @@ import {
   FacilityPsaSchema,
   FacilitySchema,
   OperatorSchema,
+  PackageLanguageSchema,
   PackageSchema,
   SystemSchema,
 } from './entities'
@@ -30,6 +31,7 @@ export type Dataset = z.infer<typeof DatasetSchema>
 export const FacilityListItemSchema = z.object({
   facility: FacilitySchema,
   fa_page_url: z.string().nullable(),
+  languages: z.array(PackageLanguageSchema),
   /** Latest retrieved_at across the package's documents. */
   last_retrieved_at: z.string().nullable(),
   /** Only assessments that apply to this facility (package + document + own facility scope). */

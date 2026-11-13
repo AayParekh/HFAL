@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink } from 'lucide-react'
 import { GradeBadge } from '@/components/grade-badge'
 import { Button } from '@/components/ui/button'
 import type { FacilityRow } from '@/lib/facility-rows'
-import { formatDate } from '@/lib/format'
+import { formatDate, languageName } from '@/lib/format'
 import { GRADE_ORDER } from '@/lib/grading'
 import type { Grade } from '@/types'
 
@@ -72,6 +72,18 @@ export const facilityColumns: ColumnDef<FacilityRow>[] = [
     cell: ({ row }) => {
       const location = [row.original.city, row.original.county && `${row.original.county} County`].filter(Boolean).join(', ')
       return location || <span className="text-muted-foreground">Not provided in report</span>
+    },
+  },
+  {
+    id: 'languages',
+    accessorFn: (row) => row.languages.map((language) => language.language_code).join(', '),
+    header: 'Languages',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const languages = row.original.languages
+      return languages.length > 0
+        ? languages.map((language) => languageName(language.language_code)).join(', ')
+        : <span className="text-muted-foreground">Not recorded</span>
     },
   },
   {

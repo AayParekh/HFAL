@@ -1,18 +1,24 @@
 import { SECTION_LABELS, SECTION_ORDER } from '@/content/criteria-copy'
 import type { Assessment, Criterion, Document as FaDocument } from '@/types'
 import { CriterionRow } from './criterion-row'
+import { criterionMatchesFilter, type CriteriaFilter } from './criteria-filter'
 
 interface CriteriaListProps {
   criteria: Criterion[]
   assessments: Assessment[]
   documents: FaDocument[]
+  filter: CriteriaFilter | null
 }
 
-export function CriteriaList({ criteria, assessments, documents }: CriteriaListProps) {
+export function CriteriaList({ criteria, assessments, documents, filter }: CriteriaListProps) {
   return (
     <div className="space-y-6">
       {SECTION_ORDER.map((section) => {
-        const items = criteria.filter((c) => c.section === section)
+        const items = criteria.filter((criterion) => {
+          if (criterion.section !== section) return false
+          if (!filter) return true
+          return criterionMatchesFilter(criterion, assessments, filter)
+        })
         if (items.length === 0) return null
         const headingId = `criteria-${section}`
         return (
@@ -32,6 +38,8 @@ export function CriteriaList({ criteria, assessments, documents }: CriteriaListP
           </section>
         )
       })}
+      {filter && !criteria.some((criterion) => criterionMatchesFilter(criterion, assessments, filter))
+        && <p className="text-sm text-muted-foreground">No criteria match this filter.</p>}
     </div>
   )
 }

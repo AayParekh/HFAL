@@ -22,7 +22,7 @@ export function GradeDistributionChart({
 }: GradeDistributionChartProps) {
   const max = Math.max(1, ...GRADE_ORDER.map((g) => distribution[g]))
   return (
-    <div role="group" aria-label="Filter hospitals by grade" className="space-y-2">
+    <div role="group" aria-label="Filter hospitals by grade" className="flex h-60 items-end justify-around gap-2">
       {GRADE_ORDER.map((grade) => (
         <button
           key={grade}
@@ -30,17 +30,17 @@ export function GradeDistributionChart({
           aria-label={`Grade ${grade}: ${distribution[grade]} hospitals`}
           aria-pressed={selectedGrades.includes(grade)}
           onClick={() => onGradeSelect(grade)}
-          className="flex w-full items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <span className="w-4 text-xs font-semibold">{grade}</span>
-          <span className="h-4 flex-1 overflow-hidden rounded-sm bg-muted">
+          <span className="text-xs tabular-nums text-muted-foreground">{distribution[grade]}</span>
+          <span className="flex h-48 w-full items-end overflow-hidden rounded-sm bg-muted">
             <span
               aria-hidden
-              className={`block h-full rounded-sm ${BAR_FILL[grade]}`}
-              style={{ width: `${Math.max(4, (distribution[grade] / max) * 100)}%` }}
+              className={`block min-h-1 w-full rounded-sm ${BAR_FILL[grade]}`}
+              style={{ height: `${Math.max(4, (distribution[grade] / max) * 100)}%` }}
             />
           </span>
-          <span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{distribution[grade]}</span>
+          <span className="text-xs font-semibold">{grade}</span>
         </button>
       ))}
     </div>

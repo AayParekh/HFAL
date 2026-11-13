@@ -60,6 +60,7 @@ export const mockApi: ApiClient = {
         return {
           facility,
           fa_page_url: data.packages.find((p) => p.package_id === facility.package_id)?.landing_url ?? null,
+          languages: data.packages.find((p) => p.package_id === facility.package_id)?.languages ?? [],
           last_retrieved_at: maxDate(documents.map((d) => d.retrieved_at)),
           assessments: applicable.map((a) => ({ criterion_code: a.criterion_code, scope: a.scope, result: a.result })),
           stored_grade: data.grade_results.find((g) => g.package_id === facility.package_id) ?? null,
