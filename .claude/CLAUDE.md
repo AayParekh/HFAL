@@ -18,7 +18,7 @@ advocates, regulators, lawmakers.
 **Current scope: the back-end pipeline, developed on CSSNY's 27-hospital sample plus 67 hospitals drawn at
 random from the rest (82 usable in dev, 41 usable in eval since OCR on Nov 12; 80 and 34 before), and evaluated on the remaining hospitals in their hand-labeled golden set, plus a
 monthly check for new or changed documents.
-No front end, no analytics yet. Schedule and task list: [PLAN.md](PLAN.md).**
+No front end, no analytics yet. Schedule and task list: [PLAN.md](../PLAN.md).**
 
 Accuracy beats cost. Two errors are equally serious: telling a patient they are eligible when they are
 not, and steering a patient away from a hospital wrongly. When unsure, flag for manual review.
@@ -48,7 +48,7 @@ listing options. Python environment via uv (not conda). Works in VS Code.
   (so it shows which hospitals are in dev). It must never carry CSSNY's labels or anything derived from them: no
   golden label, letter or note, no judge or review data, no corrected labels (`tests/test_report.py` checks the
   columns). Raw documents (`data/raw`, hundreds of MB and growing) stay out of git; S3 is their later home. Tests that need the
-  CSSNY files skip when they are absent; README "Files that are not in the repository" says how to rebuild.
+  CSSNY files skip when they are absent; docs/technical.md "Files that are not in the repository" says how to rebuild.
 
 ## Golden sheet layout (column names only)
 
@@ -102,7 +102,7 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   at 2.3 characters each), skip it and count it as "too large for one call" (never truncate), or filter by doc type
   or add retrieval; never truncate silently. For consideration: does traditional RAG (chunking, embedding, etc.) make sense for the documents? 
 - **Claude via API, not a local model.** All model access goes through `hfal/ask.py::call_model`. Provider is a
-  setting (`model.provider`: `anthropic` or `bedrock`, same SDK, same prompts and checks; README "Model
+  setting (`model.provider`: `anthropic` or `bedrock`, same SDK, same prompts and checks; docs/technical.md "Model
   providers"). Responses are cached per provider+model, run_id and provider/model are logged. The SDK has no
   `temperature` argument any more, so none is sent unless `model.temperature` is set; reproducibility comes from
   the cache and the logged ids, not from temperature 0.
@@ -281,7 +281,12 @@ Commands: `uv sync`, `uv run pytest`, `uv run hfal fetch|extract|tag|ask|grade|s
 
 ## Task queue
 
-Lives in [PLAN.md](PLAN.md) (3 days × 6 hours, with checkboxes). Do tasks in order, one at a time.
+Lives in [PLAN.md](../PLAN.md) (3 days × 6 hours, with checkboxes). Do tasks in order, one at a time.
+**Since Nov 13 PLAN.md is not tracked in git** (owner): it stays on the owner's machine and is git-ignored, so
+keep updating it, but do not expect it in a fresh clone. The README is written for a non-technical audience
+(owner, Nov 13); setup, commands and design go in `docs/technical.md`.
+This file moved to `.claude/CLAUDE.md` on Nov 13 (owner): Claude Code reads it there, and it is out of the way
+of non-technical readers of the repository. Keep it tracked: it carries the data-handling rules.
 
 ## Conventions
 

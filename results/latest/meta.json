@@ -1,16 +1,18 @@
 {
-  "generated_on": "2026-11-11",
+  "generated_on": "2026-11-13",
   "runs": [
-    "20261111T022341Z_anthropic_claude-sonnet-5-5_v5",
-    "20261111T033051Z_anthropic_claude-sonnet-5-5_v5"
+    "20261112T212213Z_openweight_us-moonshotai-kimi-k3_v7",
+    "20261113T045436Z_openweight_us-moonshotai-kimi-k3_v7",
+    "20261113T061056Z_openweight_us-moonshotai-kimi-k3_v7"
   ],
   "prompt_versions": [
-    "v5"
+    "v7"
   ],
   "models": [
-    "claude-sonnet-5-5"
+    "us.moonshotai.kimi-k3"
   ],
   "open_items_count_as_no": true,
   "explanations_version": "draft-1",
-  "hospitals": 20
+  "hospitals": 77,
+  "hospitals_collected_despite_robots_txt": 3
 }

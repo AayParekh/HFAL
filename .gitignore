@@ -51,3 +51,6 @@ data/working_set.csv
 
 # Monthly check reports (hospital ids of the sample)
 data/monitor/
+
+# Working notes and task log: kept on the owner's machine, not in the repository (decided Nov 13)
+PLAN.md
