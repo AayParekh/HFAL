@@ -19,8 +19,25 @@ def load_yaml(name: str) -> dict:
         return yaml.safe_load(f)
 
 
+# Model presets chosen on the command line (`--model NAME`), by section: {"model": "kimi-k3", "judge": ...}.
+# For the rest of the command, settings() returns that preset from settings.yaml `models:` in place of the section.
+_PRESETS: dict[str, str] = {}
+
+
+def use_model(section: str, preset: str) -> None:
+    """Use settings.yaml `models.<preset>` as the `model` (checker) or `judge` section for this command."""
+    presets = load_yaml("settings.yaml").get("models") or {}
+    if preset not in presets:
+        raise SystemExit(f"--model {preset}: not one of the presets in settings.yaml `models:` "
+                         f"({', '.join(sorted(presets)) or 'none defined'})")
+    _PRESETS[section] = preset
+
+
 def settings() -> dict:
-    return load_yaml("settings.yaml")
+    cfg = load_yaml("settings.yaml")
+    for section, preset in _PRESETS.items():
+        cfg[section] = {**cfg["models"][preset], "preset": preset}
+    return cfg
 
 
 def criteria_file() -> str:

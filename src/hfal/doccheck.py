@@ -69,7 +69,9 @@ def judge_rows(run_id: str) -> list[dict] | None:
 
 
 def _asked(run_id: str) -> set[str]:
-    return {p.stem for p in (paths.RUNS / run_id).glob("*.json") if p.stem not in ("sample", "skipped", "usage")}
+    """Hospital answer files only: run-level files (final_run.py writes several) are left out by name."""
+    run_files = {"sample", "skipped", "usage", "failed", "final_run", "final_check", "summary"}
+    return {p.stem for p in (paths.RUNS / run_id).glob("*.json") if p.stem not in run_files}
 
 
 def build(dev_ids: list[str], eval_ids: list[str], run_id: str | None = None, min_rows: int = DEFAULT_MIN_ROWS,

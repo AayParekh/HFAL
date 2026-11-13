@@ -9,16 +9,43 @@ The schedule and task list. Decisions and rules live in [CLAUDE.md](CLAUDE.md); 
 
 **Exclusion policy.** We leave a hospital out; we do not work around it. A hospital is excluded when:
 
-- robots.txt forbids fetching its landing page or one of its selected documents
+- ~~robots.txt forbids fetching its landing page or one of its selected documents~~ (no longer, since Nov 12: see
+  "robots.txt" below; the rule still applies if `fetch.respect_robots` is set back to true)
 - a bot check or access-denied response blocks it (HTTP 401 / 403 / 429, or a landing page that serves no links)
 - a broken link: its landing page or a selected document does not download, or nothing is found there
-- a selected document is a scan that needs OCR
+- a selected document is a scan that OCR did not read (OCR off, or Textract failed or found too little text)
 - it has no landing link in the hospital table
 
 `scripts/attrition.py` applies these rules and writes the **working set** (`data/working_set.csv`): the hospitals
 that pass. `hfal ask` and, later, `hfal monitor` run on the working set only. Excluded hospitals are reported as
 "not evaluable" with the cause and count in every result (see Attrition). They are not hand-fixed, and the manual
 download folder is not used to rescue them.
+
+**OCR (decided Nov 12, owner).** This reverses the earlier rule that scans exclude a hospital. `hfal extract` sends
+the near-empty pages of PDFs flagged `needs_ocr` to Amazon Textract (`src/hfal/ocr.py`, settings `ocr`; README "OCR
+for scanned PDFs"). It is automatic, the same for every hospital, and not a hand fix. First run (Nov 12): 12 scanned
+PDFs, 79 pages, $0.12. Every page came back with text: median mean-line confidence 99.7, lowest 86.7. That brought
+back 9 hospitals, 2 dev (both from the sample of 27) and 7 eval, so the working set is now **123: 82 dev, 41 eval**.
+Nobody moved between sets and nothing was redrawn. The 7 eval hospitals were never in the dev draw's pool, and none
+of the 9 had been asked. Dev is now 67% of the working set, not 70%. Results from OCR text say so: `ask` records
+`ocr` per document. Misread words or figures fail the form and FPL checks toward UNCLEAR, never toward a YES made by
+code.
+
+**robots.txt (decided Nov 12, owner).** This reverses "we respect robots.txt". `fetch.respect_robots` is now false
+for every hospital, in `fetch`, `discover` and the monthly check. robots.txt is still read: a page or document it
+disallows is fetched anyway and marked (`robots_disallowed: true` in the manifest; `robots_txt_ignored` in the
+discovery record), and `ask` carries the mark into each run's document list. `hfal report` shows it
+(`collected_despite_robots_txt` per hospital, `evidence_despite_robots_txt` per criterion, a note and a chip in
+`report.html`), and the attrition table counts the hospitals under the table. The same honest user agent
+(`hfal-monitor/0.1`) and the 1.5-second delay between requests are kept. Bot checks (401 / 403 / 429) are still not
+worked around: no real browser, no disguised user agent. Why: 11 hospitals were excluded only for robots.txt (several
+document hosts, such as widen.net, disallow all bots), and the owner judged coverage worth more than following the
+sites' request. The known cost: a hospital disputing its grade can point out that we ignored its robots.txt; the
+report says so openly rather than hiding it. Applied (Nov 12) by re-running fetch, discover, extract and tag for those
+11 only (no other hospital was refetched; the others pick up the setting at their next fetch or monthly check): 9
+joined the working set (3 dev, 6 eval; 2 scanned documents among them were OCR'd, 21 pages) and 2 (1 dev, 1 eval) now
+stop at a bot check instead. Each stayed in the set it already had; nothing was redrawn, and none had been asked.
+Working set with OCR and robots.txt: **132: 85 dev, 47 eval** (dev 64%).
 
 **Data split.** Before the rebuild, dev was the 27 hospitals in `data/sample_raw.csv` (waves ignored) and eval was
 the other 184 in the golden sheet. Only 13 dev hospitals survived the exclusion policy, too few to improve
@@ -27,8 +54,8 @@ that pass the exclusion policy):
 
 | Set | After the rebuild | Used for |
 |---|---|---|
-| **Dev** | The 27 sample hospitals plus 67 drawn at random from the eval hospitals in the working set: 94 hospitals, **80 usable** (13 + 67), 70% of the working set | Everything: reading diffs, bucketing errors, changing prompts, criteria wording, doc filtering |
-| **Eval** | The remaining 117 eval hospitals, **34 usable**, 30% of the working set | Measuring only |
+| **Dev** | The 27 sample hospitals plus 67 drawn at random from the eval hospitals in the working set: 94 hospitals, **80 usable** (13 + 67), 70% of the working set; **82** since OCR (Nov 12); **85** since robots.txt is no longer respected (Nov 12) | Everything: reading diffs, bucketing errors, changing prompts, criteria wording, doc filtering |
+| **Eval** | The remaining 117 eval hospitals, **34 usable**, 30% of the working set; **41** since OCR (Nov 12); **47** since robots.txt (Nov 12) | Measuring only |
 
 **How the sets were rebuilt (done Nov 10, 2026, before any eval aggregate was looked at).**
 
@@ -41,7 +68,7 @@ that pass the exclusion policy):
 4. The original 27 stay dev; the 14 of them that are excluded stay excluded and counted.
 5. **The split is frozen**: never move a hospital between sets after seeing results from either set. The script
    refuses to run again.
-6. The eval set is small (34 usable hospitals, about 600 judgments, and fewer for criteria that are rarely NO), so
+6. The eval set is small (41 usable hospitals since OCR, about 740 judgments, and fewer for criteria that are rarely NO), so
    its numbers carry wide uncertainty; say so in the write-up and give intervals, not just point values.
 
 Rules for the eval set:
@@ -67,6 +94,9 @@ Rules for the eval set:
 - [x] Usage and cost: `ask` and `judge` end with a summary and write `runs/RUN_ID/usage.json`; every billed call is a
       row in the ledger `runs/usage.csv`; `hfal usage` adds it up (see "Usage and cost" below)
 - [x] `doc_not_found` check: `hfal doc-check [--run RUN_ID]` (see "Discovery check" below)
+- [x] (Nov 12) OCR for scanned PDFs with Amazon Textract, inside `hfal extract` (see Scope rules; README "OCR for
+      scanned PDFs"). Run on all 12 scanned PDFs (79 pages, $0.12). 9 hospitals came back (2 dev, 7 eval) and are
+      tagged. Working set 123.
 - [x] `hfal score` reports pooled totals (accuracy with a hospital-level 95% interval, coverage, accuracy when answered,
       false YES / false NO, flag rate, pooled precision / recall) for the whole run and for dev and eval apart, once
       with all criteria and once without the report-only one, and **letter-grade agreement with CSSNY** (same letter, within
@@ -177,8 +207,8 @@ Rules for the eval set:
       sites, fix the rules, and log each change in `docs/discovery.md`. A `doc_not_found` can also mean the site
       never posted the document or changed since September 2025, so a person decides each one. Dev only: the
       judge refuses eval hospitals, so use the label-free coverage counts for the eval hospitals
-- [ ] (0.5) Eval checkpoint 1: same config (v7) on the working eval hospitals, aggregates only (34 hospitals).
-      About 34 of 80 times the dev run: roughly $9 for `ask` with v5 (about 2.8 million input and 0.3 million output
+- [ ] (0.5) Eval checkpoint 1: same config (v7) on the working eval hospitals, aggregates only (41 hospitals since
+      OCR; 34 before). About 41 of 82 times the dev run (the estimate below was made for 34): roughly $9 for `ask` with v5 (about 2.8 million input and 0.3 million output
       tokens); v7's longer answers (nine consistency points with two quotes each) cost somewhat more, not measured yet.
       Eval is scored against the sheet as it is only (no corrected labels for eval)
 - [ ] (0.5) **Agreement spot-check** (not built): a random sample of about 40 rows where the model and the sheet agree,
@@ -200,10 +230,110 @@ are reported.
       change (what changed, what moved). Each dev rerun of `ask` is about $20 (about $50 with a new `judge` pass), so check the price once;
       answers for an unchanged prompt come from the cache for free. Likely: reword criteria text written for spreadsheet coders
       ("this column ..."), per-criterion `doc_types` filtering, quote rules, discovery keywords
-      - **Decided Nov 11: the next paid run is v7, directly**, on all 80 dev hospitals (settings.yaml is already on v7).
+      - **Decided Nov 11: the next paid run is v7, directly**, on all dev hospitals (82 since OCR on Nov 12; settings.yaml is already on v7).
         No v5 baseline on the other 60 and no v6 run, so the gain from each change cannot be measured separately;
         the write-up reports v7 against the sheet as it is and against the corrected labels, and v7 against v5 on the
         20 v5 hospitals with that caveat
+      - **Pilot (Nov 12), the 15 hand-reviewed v5 hospitals, v7, two models. Against corrected labels, graded criteria:
+        Sonnet 5.5 95.0% (91.6-97.9), Kimi K3 at max 94.2% (90.8-97.1), Sonnet v5 on the same 15 88.7%; against the
+        sheet as is 75.7% / 75.7% / 69.4%. Same letter as CSSNY 11/15 for both v7 runs (v5 4/15).** Owner's review of the
+        9 new disagreements (`data/review/pilot_v7_review.csv`): the models' answers were fine or reasonable, so no
+        wording change (v7 stays). Found and fixed in code, not the prompt: (1) Sonnet left 14 of 18 criteria out of 4 of
+        its 15 v7 replies (an incomplete reply is now rejected and retried; `ask.py` `missing_criteria`); Kimi K3 never
+        did; (2) quote check: a hyphen lost at a PDF line break and stray spaces before punctuation made 3 of Kimi's
+        word-for-word quotes fail (`verify.py` `for_matching`; Kimi now 259/259 verified); (3) one-word language quotes
+        ("Arabic": sites list languages as links or table cells) were under the 10-character minimum. Decided (owner):
+        for languages only (the criterion and the reported list), a quote of 3-9 characters counts when the cited
+        document has it as a whole word (`verify.py` `verify_word`); every other criterion keeps the minimum. The
+        report's Languages row then shows "Languages named in this document: ..." from the verified list, not the
+        lone word (`report.py`, column `evidence_languages`). Pilot after (1)-(3), from the cache: Sonnet 260/260 and
+        Kimi 259/259 YES/NO quotes verified, languages lists 183/183 and 219/219. None of this changes v7.
+      - **Model for the final run (Nov 12, owner): Kimi K3 at max (preset `kimi-k3-max`), the pilot's model**, not K3.1:
+        K3.1 at max was tried on one hospital only, and 10 of its 17 YES/NO quotes were paraphrases that failed
+        verification (would become UNCLEAR).
+      - **Superseded Nov 12 (owner): the final run is Kimi K3 at max effort (preset `kimi-k3-max`; was K3.1), prompt v7, on 40
+        dev hospitals** drawn at random (seed 20261112) from the dev hospitals not in the pilot (`data/review/pilot_ids*.txt`,
+        15 ids: the pilot review tunes on them), in 2 processes. No judge on this run. Starts after the owner's review of
+        `data/review/pilot_v7_review.csv`; a wording change from that review makes it v8 (bump `prompt_version`).
+        Automated by `scripts/final_run.py` (asks before spending; every hospital's file checked by `src/hfal/runcheck.py`;
+        failures retried; grade, score, size-check, report, usage only when all 40 are recorded properly). Its report
+        goes to its own `results/DATE_kimi-k3-max_v7/`; `results/latest/` keeps the 20-hospital v5 report (owner,
+        Nov 12). Size-check on 40: thirds of about 13 are readable, the group above 150K tokens likely is not. Rehearsed without a model
+        call: 0 of 40 too large, about $40 estimated (28K output tokens each, from K3 at max), budget stop at $60.
+        **Revised Nov 12 (owner):** hard limit $50; with 2 processes it stops at $47 spent, so the calls still in flight
+        (up to $1.50 each) stay within $50. Re-estimated with the pilot's real cost: about $27-30 for 40, less because
+        7 of the 40 post the same documents as a pilot hospital and reuse its cached answer (read only, free). A stop
+        keeps every answer already received (answer files and the response cache are written whole or not at all);
+        `--resume RUN_ID` asks only the rest. The 15 pilot hospitals can never be drawn: `pilot_ids.txt` must exist
+        and list them, or the script stops; the run writes only to its own new run folder
+      - **Final run done (Nov 13): 40 of 40 recorded, $19.73** (31 billed calls, 9 from the cache; the first start
+        failed on an expired AWS SSO login, `--resume` finished it). Quotes verified 679/682. Sheet as is: accuracy
+        78.6% (73-84%), false YES 11.0%, false NO 4.7%, flagged 5.7%; same letter as CSSNY 23/40, within one 27/40.
+        8 of the 10 hospitals we give an F and CSSNY does not are an open `entire_uniform_application` (form check
+        under 98%) counted as NO, so an automatic F; if a person found those applications fine: 26/40 and 34/40.
+        Biggest error sources: false YES on 2025 FPL (14) and the two PSA criteria (18); false NO on consistency (17).
+        Pilot vs the 40, same model and prompt: 75.9% vs 78.6% (difference -2.7 points, 95% -15 to +8); on label-free
+        features and CSSNY's letters the pilot does not differ detectably from the other 70 dev hospitals (all
+        permutation p > 0.2; low power with 15). Size check pooled with the pilot (55): no size effect (thirds 20.3%,
+        17.7%, 10.4%; the 6 above 150K tokens are mostly one system's shared documents, unreadable)
+      - **Judge on a review sample (Nov 13, owner): Opus, $4.40, the 13 hospitals of a 20-row random sample of the 40's
+        YES/NO disagreements** (14 model-YES + 6 model-NO, proportional, seed 20261113; open answers left out since
+        reviewing them cannot change the score). Sheet: `data/review/final40_sample_review.csv` (judge columns beside
+        `human_bucket` / `human_note`). Judge on the 20: model right 17, cannot tell 3 (a suggestion, never a label).
+        The other 62 judged rows are not a random sample; 10 of them are judged doc_not_found (discovery). The share of
+        the 20 a person calls model-right extrapolates the corrected score: 78.6% + 15.7% x share.
+        **Reviewed (Nov 13, owner):** notes per row; buckets filled from them: 18 `golden_or_site` ("model good"),
+        1 `rubric_differs` (contact information: the model followed the rubric, the owner sides with the sheet that the
+        hospital's own contact details are needed), 1 `ambiguous`. The owner read the judge's explanation and its
+        evidence (verified verbatim in code) but did not re-read every source document, so the calls lean on the judge.
+        Share model-right 18/20 = 90% (Wilson 95% 70-97%) -> corrected accuracy for the 40 about **92.7% (89.6-93.9%)**;
+        if the judge was wrong on ~11% of the accepted rows (its rate in the Nov 11 review): 91.2% (87.8-93.0%). Ceiling
+        94.3%. Still an upper estimate (agreements not checked). The interval treats the 20 rows as independent
+        (they come from 13 hospitals), so it is a little narrow. Corrected labels rebuilt from judge_review,
+        pilot_v7_review and final40_sample_review: 127 calls
+      - **NOT_FOUND review of the fill run (Nov 13, owner), `data/review/not_found_review.csv`, checks 1, 2, 6, 8 of 10:**
+        no document was dropped for naming another hospital (discovery's name filter rejected none at these 10
+        hospitals). Two checks: the summary is not posted (model right to find none). Two: a financial assistance web
+        page could serve as the summary but never calls itself one. Rubric gap: CSSNY's column is "Policy Summary Posted
+        (as PDF, or on landing page)" and the law (§ 2807-k(9-a)(c)) asks only that a summary exist with income levels,
+        the service area and how to apply, while v7 tells the model not to count a web page for the three summary
+        criteria. Not changed in v7 (a v8 change needs a paid rerun); see "Open decisions". Checks 2 and 6 (missing
+        application): check 2 not posted (the model's reason, that the page links to one, is wrong; NOT_FOUND is right);
+        check 6 model right, the application is an online JavaScript form that cannot be collected as a document
+      - **Report changes (Nov 13, owner):** (1) a summary criterion that is NOT_FOUND, at a hospital where we collected
+        a web page, gets `for_reviewer` / `for_reviewer_url` in criteria.csv ("this page may serve as the summary; a
+        person should check"); the answer stays NOT_FOUND. (2) `entire_uniform_application` and
+        `consistent_across_posted_documents` show `evidence_summary` (the form check's match and mostly missing
+        paragraphs; the nine points' tally and both sides of each verified conflict) instead of a single quote, which
+        said little. The quote stays in the run file. Both 2026-11-13 reports regenerated (40: 16 hint rows on 4
+        hospitals; 22: 20 on 5). Seen in the form summaries: paragraphs reported missing include the form's sliding-scale
+        lines and its "must be printed in the primary languages" instruction, parts a hospital may fill in or drop, so
+        the 98% pass line may be too strict (it drives 8 of the 40's 10 extra F's). Worth a look before any v8
+      - **Addresses (Nov 13, owner):** `data/hospitals.csv` gains `address` and `zip` from the golden sheet's identity
+        columns (`scripts/seed_hospitals.py`, filled once, nothing else changed: 211/211); the report's hospitals.csv
+        has address, city, zip and report.html shows them. Identity, not labels, as with name and city
+      - **Free v7 options looked at (Nov 13), no model call:** (1) form check: of the 17 open uniform-application
+        answers in the 77 Kimi v7 hospitals, 14 miss the form's line "This application must be printed in the primary
+        languages spoken by patients", an instruction to the hospital. Simulated, from the saved documents: leaving
+        out the form's 3 hospital-facing lines turns 4 open answers to YES (sheet: 3 YES, 1 NO) and 1 YES to open
+        (sheet NO); also leaving out the 2 sliding-scale lines (the form says hospitals may give greater discounts;
+        the tables criterion still checks the table) turns 8 open and 1 NO to YES (sheet: 8 YES, 1 NO) and the same 1
+        YES to open. Chosen partly after seeing dev numbers: confirm at the eval checkpoint. **Applied (owner, Nov 13,
+        rule B; a best-case-letter column was declined):** `formcheck.MAY_DIFFER` (5 lines not compared), tests added;
+        the 77 hospitals re-asked from the response cache ($0, 0 ledger rows; every reply checked cached first), run-level
+        usage.json restored from a backup. Exactly the simulated changes (8 open -> YES, 1 NO -> YES, 1 YES -> open), no
+        other criterion moved; the reviewed sample's uniform-application row is unchanged. Sheet as is: random 40
+        78.6% -> 79.4%, same letter 23 -> 28/40, within one 27 -> 33, provisional 21 -> 18; extra 22 70.6% -> 70.9%,
+        letters 12 -> 13/22; pilot 75.9% -> 76.3%, letters 11 -> 12/15. Extrapolated corrected accuracy for the 40,
+        same 18/20 share: about 93.4% (90.3-94.5%). Reports regenerated. (2) consistency: `hfal consistency-check` on the 40
+        shows no single point drives the 17 false NO (leaving any one out changes at most 2), and the owner's review
+        agreed with the model on 3 of the 4 sampled consistency disagreements (the fourth unclear), so no change
+      - **Fill run (Nov 13, owner: "volume" for about $10): 22 more dev hospitals, $6.35** (13 billed; 9 answered from
+        the cache because they post the same documents as an asked hospital). Chosen by cost (the cheapest 13 plus the
+        9 free), so NOT random and smaller prompts: report it as coverage, keep the 40 as the headline. Sheet as is:
+        70.6% (61-80%), flagged 12.9% (37 NOT_FOUND), same letter 12/22. `scripts/final_run.py --hospitals-file
+        --max-call-usd --report-dir` added for it. Kimi K3 max v7 now covers 77 of 85 dev hospitals; the 8 left
+        cost about $7 more (two of them copy another's prompt). AWS-billed total by the ledger after it: $43.49
       - **v6 (drafted Nov 11, folded into v7, not run on its own):** `config/criteria_overrides_v6.yaml` ->
         `criteria_v6.yaml`. Changes from the first 20 judged dev hospitals (119 disagreements): (1) PSA criteria count wording that
         residents of New York State, New York City or a wider area can get assistance (emergency or other care) as the
@@ -251,7 +381,8 @@ are reported.
    offline, not yet run on the live sites). Per hospital: fetch the landing page, rerun discover, fetch, extract, tag;
    compare with the last manifest from before today; write `data/monitor/{date}/` (hospitals.csv, changes.csv:
    new / changed / removed / unreachable / moved / same text); ask and grade only hospitals whose **extracted text**
-   changed (bytes alone do not count). A hospital that becomes blocked, broken or scanned is reported as unreachable
+   changed (bytes alone do not count). A new scan is OCR'd during the check (Textract, per page, cached). A hospital
+   that becomes blocked or broken, or posts a scan OCR cannot read, is reported as unreachable
    (`newly_unreachable`), not asked and not dropped; the exclusion rule is shared with attrition
    (`src/hfal/attrition.py`). A failed step puts that hospital back as it was. Excluded hospitals are not monitored;
    their count is reported with every result. **Eval hospitals are not monitored** (their documents stay as collected
@@ -268,8 +399,8 @@ are reported.
    (Nov 11). The Internet Archive may hold copies of some hospitals' pages and PDFs from September 2025; scoring on
    them would need another paid run. Corrected labels stand in for now.
 5. Optional: cheaper vs stronger Claude tier, and a cheaper open-source model, on the frozen config (CLAUDE.md says
-   Claude via API; revisit only with results; quote verification is code, so it works with any model). OCR for the
-   scanned documents. `aws s3 sync` of `data/`.
+   Claude via API; revisit only with results; quote verification is code, so it works with any model). ~~OCR for the
+   scanned documents.~~ Done Nov 12 (Amazon Textract; Scope rules). `aws s3 sync` of `data/`.
 
 ## Prompt versions
 
@@ -279,7 +410,7 @@ version, and every run file records `prompt_version`.
 | Version | What changed | Files | Status |
 |---|---|---|---|
 | v1 | CSSNY's data dictionary text as the criteria, plus drafted `guidance` and `no_means` where the dictionary had none | removed | Retired (Nov 10) |
-| v2 | Adds the two reported lists (languages, PSA counties), each item with a verified quote | removed (the committed `criteria_overrides.yaml` of the first commit is v2) | Retired; one-hospital run kept on disk, not a baseline |
+| v2 | Adds the two reported lists (languages, PSA counties), each item with a verified quote | `criteria_overrides_v2.yaml` (restored Nov 12 from the first commit) -> `criteria_v2.yaml` | Retired. **Re-run Nov 12 as a baseline** on the 15 pilot hospitals (Sonnet, same documents as their v5 and v7 runs; no form/FPL/max-FPL checks, as in v2; $3.28). Sheet as is: accuracy 68% (v5 70%, v7 75%), false YES / false NO 27 / 33 (v5 34 / 28, v7 35 / 19), exact letters 0 of 15 (v5 4, v7 11). Corrected labels: 83% (v5 89%, v7 93%), but 13 of v2's 86 disagreements have no person's call (reviews were of v5 disagreements), so this favours v5 and v7 |
 | v3, v4 | Intermediate rubric drafts on the way to v5. What each changed was not recorded before the files were removed | removed | Retired |
 | v5 | The rubric: ordered checks, YES/NO meanings and notes per criterion, shared reading rules; the 2007 PSA rule; the state's blank uniform application (`<reference_form>`) and the 2025/2026 poverty figures (`<reference_fpl>`) in the prompt; code checks `formcheck.py`, `fpl.py`, `maxfpl.py` (see "Rubric", "Form check", "FPL check", "Max FPL check") | `criteria_overrides.yaml` -> `criteria.yaml` | 20 dev hospitals asked, judged and hand-bucketed (98 of 119 rows). Not run further (decided Nov 11) |
 | v6 | PSA criteria count wording that residents of an area can get assistance ("New York State residents", "if you live in New York City"), for emergency or other care, as the service area; an area covering all of New York State or all of New York City passes the boundaries criterion with no county test (CSSNY's practice), other county lists keep the test; Languages: no other language named is NO, not UNCLEAR; physician / faculty group practice documents are set aside. PSA and Languages wording revised Nov 11 before any v6 run, so the version number stays | `criteria_overrides_v6.yaml` -> `criteria_v6.yaml` | Not to be run on its own (decided Nov 11); its changes reach the data through v7 |
@@ -410,7 +541,8 @@ document-by-document review. It reads no golden labels itself; the judge rows it
   answers are shown separately ("would have used ...") and never counted as spend. Written to `runs/RUN_ID/usage.json`
   (sections `ask` and `judge`). If `ask` stops on an error, the totals up to that point are still printed.
 - **Ledger `runs/usage.csv`** (git-ignored): one row per call that reached the provider, written when the reply
-  arrives, with purpose (`ask` / `judge` / `ping`), run_id, hospital_id, model, effort, tokens, dollars and status. A call
+  arrives, with purpose (`ask` / `judge` / `ping` / `ocr`; an `ocr` row is one Textract page, no tokens, priced by
+  `ocr.price_per_page`), run_id, hospital_id, model, effort, tokens, dollars and status. A call
   that was billed and then failed (`refusal`, `max_tokens`, `bad_json`) is a row too, and `hfal usage` lists those apart.
   Rows are never edited, so totals can be added up over any period.
 - **`uv run hfal usage [--by purpose|model|day|run|status] [--since YYYY-MM-DD] [--run RUN_ID]`** adds the ledger up.
@@ -418,7 +550,16 @@ document-by-document review. It reads no golden labels itself; the judge rows it
 - **Prices** are in `config/settings.yaml` `prices` (per million tokens: Sonnet 5.5 $2 / $10, Opus 5.5 $4 / $20,
   Anthropic list prices as of Nov 2026). The dollars are stored with each row at the price in force then. A model with
   no price has its tokens counted and its cost left blank. Bedrock needs its own key (`bedrock/<id>`).
-- **Output tokens** are what the provider reports; they include the model's thinking. Prompt caching is not used.
+- **Output tokens** are what the provider reports; they include the model's thinking.
+- **Prompt caching (Nov 12):** the system prompt (the same for every hospital) is cached by the provider: Claude for
+  one hour (`cache_control`), Kimi through Bedrock's explicit mode (`prompt_cache_breakpoint`, at least 30 minutes;
+  explicit so the hospital's documents are never written to the cache). Answers do not change. The ledger has
+  `cache_read_tokens` / `cache_write_tokens`, priced at `cache_read` / `cache_write` in settings.yaml. Off per model
+  with `prompt_cache: false`. **Live check (Nov 12, $0.05, ledger run_id `cache-check`):** the system prompt alone, sent
+  twice. Sonnet 5.5: 5,952 tokens written, then 5,952 read. Kimi K3.1: 4,006 written, then 4,006 read; only the system
+  prompt was written (explicit mode works; the reply reports `prompt_tokens_details.cached_tokens` /
+  `cache_write_tokens`). Saving per hospital about $0.011 (Sonnet) and $0.017 (Kimi), roughly 2-4% of a run: input is
+  mostly each hospital's own documents, and output costs more.
 - **After the first full dev run,** replace the hand estimates in the Day 2 lines ("about $7", "$10-20") with the
   measured figure from `hfal usage --run RUN_ID`.
 
@@ -436,10 +577,12 @@ document-by-document review. It reads no golden labels itself; the judge rows it
 4. **What is "too large for one call"?** Decided (Nov 10): a hospital is skipped when its estimated prompt
    exceeds **80% of the model's context window**, in tokens (`context_window_tokens`, `max_input_share`,
    `chars_per_token` in `config/settings.yaml`; the window is 1,000,000 tokens for `claude-sonnet-5-5`). The
-   estimate assumes 3 characters per token, so it errs high. A skipped hospital is not truncated and not asked:
+   estimate assumed 3 characters per token until Nov 12; it is now 2.3, as measured on real prompts (3 counted about a
+   quarter too few tokens). Since Nov 12 a model preset can set its own window, and an open-weight (Kimi) preset must:
+   `ask` and `judge` stop until it is set. A skipped hospital is not truncated and not asked:
    `ask` lists it in `runs/RUN_ID/skipped.json`, carries on with the rest, and attrition counts it as "too large
-   for one call". This is a safety limit, not a quality limit. Today no working hospital reaches it (the largest is
-   about 252,000 tokens, 25% of the window); an earlier 600,000-character cap, about 150,000 tokens, caught 8 and
+   for one call". This is a safety limit, not a quality limit. Today no working hospital reaches it (Nov 12, all 132: the largest is
+   about 454,000 tokens at 2.3 characters per token, 45% of Claude's window; 9 are above 256,000); an earlier 600,000-character cap, about 150,000 tokens, caught 8 and
    was dropped. Whether a lower *quality* ceiling is needed is decided from the prompt-size analysis (Day 2, long-context
    check 1), not assumed; research finds accuracy can fall well before a window is full (RULER, NoLiMa, Chroma's
    "context rot"), mostly on other models, so it has to be measured on this one.
@@ -484,6 +627,14 @@ document-by-document review. It reads no golden labels itself; the judge rows it
    `hfal report` shows open items as open. Reversible in the rubric.
 9. **No CSSNY consultation, straight to v7.** Decided (Nov 11, owner): no email to CSSNY, no September PDFs, no v5
    baseline on the other 60 dev hospitals and no v6 run. Consequences are written into Day 2, Day 3 and "Rubric".
+10. **Can a web page be the plain-language summary?** Open (Nov 13). CSSNY's column accepts a summary "as PDF, or on
+   landing page"; the law asks only that a summary exist and contain income levels, the service area and how to
+   apply. v7 does not count a web page for the three summary criteria, so a hospital whose only summary is its web
+   page gets NOT_FOUND (open, an F-side item for the letter). Candidate v8 rule: a financial assistance web page
+   counts as the summary when the page itself, written for patients, states the income levels and how to apply; the
+   model names the page it treated as the summary (quote verified), and the report says so. Risk: a thin page
+   counted as a summary (false YES on "summary posted"); the content test limits it. Needs a paid rerun, so not
+   this week; until then it is a stated limitation
 
 ## Form check (prompt v5, built Nov 10)
 
@@ -547,7 +698,9 @@ For `max_fpl` ("the highest income level that gets any assistance is at least 40
 How many hospitals survive each stage, from the exclusion policy above. Rebuild with
 `uv run python scripts/attrition.py --update-plan` (add `--run RUN_ID` once `ask` has run). Counts only here; the
 per-hospital list is in the git-ignored `data/attrition.csv`, and hand exclusions in the git-ignored
-`data/exclusions.yaml`. Eval stages after "has landing_url" stay at 0 until the eval set is fetched.
+`data/exclusions.yaml`. Eval stages after "has landing_url" stay at 0 until the eval set is fetched. Since Nov 12
+robots.txt no longer excludes anyone; the line under the table counts working hospitals with something collected
+despite it.
 
 <!-- attrition:start -->
 _Generated by `scripts/attrition.py`. Do not edit by hand._
@@ -556,11 +709,13 @@ _Generated by `scripts/attrition.py`. Do not edit by hand._
 |---|---|---|---|
 | 1. in hospital table | 94 |  | 117 |
 | 2. has landing_url | 90 | 4: no landing link | 83 |
-| 3. landing page fetched | 89 | 1: blocked by robots.txt | 80 |
+| 3. landing page fetched | 89 | 1: bot check / access denied | 80 |
 | 4. documents found | 85 | 2: bot check / access denied; 2: broken link, moved site, or empty page | 48 |
-| 5. all selected documents downloaded | 82 | 3: blocked by robots.txt | 41 |
-| 6. no document needs OCR | 80 | 2: scanned document (needs OCR) | 34 |
-| 7. not excluded by hand | 80 |  | 34 |
+| 5. all selected documents downloaded | 85 |  | 47 |
+| 6. no scan left unread by OCR | 85 |  | 47 |
+| 7. not excluded by hand | 85 |  | 47 |
+
+Working set collected despite robots.txt (`fetch.respect_robots: false`, since Nov 12): 3 dev, 6 eval.
 <!-- attrition:end -->
 
 ## Future work (not scheduled)
@@ -612,8 +767,9 @@ documents / grades (`hfal monitor`, Next), the scoring harness (`hfal score`, `d
   Revisit only if a hospital is too large for one call (Open decisions 4) or the Day 2 errors show facts being lost in long documents.
 - **Bedrock Knowledge Bases comparison.** Beyond this plan.
 - **Front end.** "Next" produces the data model only.
-- **Rescuing excluded hospitals** (manual downloads, a real browser, OCR, ignoring robots.txt). By policy, they
-  stay excluded and counted.
+- **Rescuing excluded hospitals** (manual downloads, a real browser or anything else that gets past a bot check). By
+  policy, they stay excluded and counted. Two exceptions since Nov 12, both automatic and the same for all: OCR, and
+  no longer respecting robots.txt (Scope rules).
 - **A Claude skill as the monthly scheduler.** Change detection is deterministic (hashes), must run unattended,
   and should cost nothing when nothing changed. A skill could later help a person review the change report, but
   the schedule is a plain script.

@@ -1,0 +1,206 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>HFAL pipeline</title>
+<style>
+:root{
+  --ink:#1d2433; --muted:#5b6475; --line:#d5dae3; --bg:#ffffff;
+  --in:#475569;  --in-bg:#f1f4f8;
+  --co:#1d63c9;  --co-bg:#eef4fd;
+  --as:#6a3fc4;  --as-bg:#f4f0fd;
+  --ch:#13804f;  --ch-bg:#ebf7f0;
+  --gr:#b26205;  --gr-bg:#fdf4e6;
+  --im:#c2335a;  --im-bg:#fdeef2;
+  --re:#0d7a86;  --re-bg:#e9f6f7;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{zoom:2}
+body{width:1920px;height:1080px;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  font-size:14.1px;line-height:1.35;padding:24px 24px 20px;overflow:hidden;display:flex;flex-direction:column}
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+h1{font-size:27px;letter-spacing:-.3px;font-weight:700}
+h1 small{font-weight:500;color:var(--muted);font-size:16px;margin-left:10px;letter-spacing:0}
+.legend{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12.5px}
+.who{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:8px;
+  vertical-align:1px;margin-left:4px;text-transform:uppercase}
+.legend .who{font-size:10.5px;padding:2px 8px}
+.who.ai{background:#6a3fc4;color:#fff}
+.who.code{background:#13804f;color:#fff}
+.who.person{background:#c2335a;color:#fff}
+
+.stages{flex:1;display:grid;grid-template-columns:1fr 20px 1fr 20px 1.22fr 20px 1.05fr 20px 1fr 20px 1fr 20px 1fr;}
+.col{border-radius:10px;padding:0 0 8px;display:flex;flex-direction:column;gap:7px}
+.col>h2{font-size:15px;letter-spacing:.6px;text-transform:uppercase;color:#fff;padding:8px 10px 7px;border-radius:9px 9px 0 0;
+  display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.col>h2 em{font-style:normal;font-weight:500;text-transform:none;letter-spacing:0;font-size:11.5px;opacity:.92;text-align:right}
+.col>.cmd{font-family:"SF Mono",Menlo,monospace;font-size:12px;color:var(--muted);padding:0 10px;margin-top:-2px}
+.b{background:#fff;border:1.4px solid var(--line);border-radius:7px;padding:7px 9px;margin:0 8px}
+.b b{display:block;font-size:14.8px;margin-bottom:2px}
+.b.warn{background:#fff6f6;border-color:#e3a5a5 !important}
+.arrow{display:flex;align-items:center;justify-content:center}
+.arrow svg{width:18px;height:18px}
+.c-in{background:var(--in-bg)} .c-in>h2{background:var(--in)}
+.c-co{background:var(--co-bg)} .c-co>h2{background:var(--co)}
+.c-as{background:var(--as-bg)} .c-as>h2{background:var(--as)}
+.c-ch{background:var(--ch-bg)} .c-ch>h2{background:var(--ch)}
+.c-gr{background:var(--gr-bg)} .c-gr>h2{background:var(--gr)}
+.c-im{background:var(--im-bg)} .c-im>h2{background:var(--im)}
+.c-re{background:var(--re-bg)} .c-re>h2{background:var(--re)}
+.c-co .b{border-color:#bcd1f0} .c-as .b{border-color:#d3c5f0} .c-ch .b{border-color:#b5dcc6}
+.c-gr .b{border-color:#ecd2a8} .c-re .b{border-color:#b2dce0} .c-in .b{border-color:#d3d9e2} .c-im .b{border-color:#efbccb}
+.c-ch .b{border-left:4px solid var(--ch)}
+
+/* parallel run */
+.par{border:1.6px solid var(--as);background:#fff;border-radius:8px;margin:0 8px;padding:7px 8px}
+.par>b{display:block;font-size:14.8px}
+.par .meta{color:var(--muted);font-size:12.8px;margin-bottom:6px}
+.lanes{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:3px 0}
+.lane{background:var(--as-bg);border:1px solid #d3c5f0;border-radius:6px;padding:5px 6px;font-size:12.8px;text-align:center}
+.lane b{font-size:13.4px;display:block}
+.seq{display:flex;flex-direction:column}
+.down{text-align:center;color:var(--as);font-size:11.5px;line-height:1.1;padding:1px 0}
+.step{background:#faf8ff;border:1px solid #d3c5f0;border-radius:6px;padding:4px 7px;font-size:12.8px}
+
+/* improve column */
+.c-im .dn{text-align:center;color:var(--im);font-size:12px;line-height:1;margin:-4px 0 -4px}
+.loop{margin:0 8px;border:1.8px dashed var(--im);border-radius:8px;padding:6px 8px;color:var(--im);font-weight:700;font-size:13.6px;
+  display:flex;align-items:center;gap:8px;background:#fff}
+.loop svg{width:26px;height:26px;flex:none}
+.loop span{font-weight:500;color:var(--ink);display:block;font-size:12.8px}
+
+.rules{margin-top:14px;border:1.4px solid var(--line);border-radius:10px;padding:9px 14px;display:flex;gap:26px;align-items:center;font-size:13.6px}
+.rules h3{font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);flex:none}
+.rules span{position:relative;padding-left:13px}
+.rules span::before{content:"";position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:2px;background:var(--muted)}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="arr" viewBox="0 0 24 24"><path d="M3 12h15M13 6l6 6-6 6" fill="none" stroke="#8a93a5" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="back" viewBox="0 0 24 24"><path d="M20 7v4a4 4 0 0 1-4 4H5M9 11l-4 4 4 4" fill="none" stroke="#c2335a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<header>
+  <h1>HFAL monitor: the full pipeline <small>New York Hospital Financial Assistance Law compliance</small></h1>
+  <div class="legend">decided by <i class="who ai">AI</i><i class="who code">code</i><i class="who person">person</i></div>
+</header>
+
+<div class="stages">
+  <!-- 1 INPUTS -->
+  <div class="col c-in">
+    <h2>1 · Inputs</h2>
+    <div class="b"><b>CSSNY golden sheet</b>Hand review, Sept 2025: 211 hospitals × 18 criteria + letter grade. Never edited, never committed.</div>
+    <div class="b"><b>Hospital table</b>One landing page per hospital (id = PFI). Add-only; eval hospitals keep CSSNY's link.</div>
+    <div class="b"><b>Dev / eval split · frozen</b>Seed 20261110. <b style="display:inline">Dev 85</b>: read errors, tune. <b style="display:inline">Eval 47</b>: aggregate scores only, never tuned on.</div>
+    <div class="b"><b>Rubric = criteria text (v7)</b>Ordered checks, YES/NO meanings, shared reading rules. Follows CSSNY's sheet; unreviewed draft.</div>
+    <div class="b"><b>Reference texts</b>State blank uniform application · official 2025 / 2026 poverty figures · PHL §2807-k(9)/(9-a) (explanations only).</div>
+  </div>
+  <div class="arrow"><svg><use href="#arr"/></svg></div>
+
+  <!-- 2 COLLECT -->
+  <div class="col c-co">
+    <h2>2 · Collect</h2>
+    <div class="cmd">sources → fetch → discover → extract → tag</div>
+    <div class="b"><b>Fetch landing page</b>Honest user agent, 1.5 s delay. robots.txt read but not obeyed (Nov 12): marked and disclosed.</div>
+    <div class="b"><b>Discover documents</b>Deterministic keyword crawl, candidate pick, health-system filter. Rule changes logged.</div>
+    <div class="b"><b>Store by hash</b>Content-addressed files + dated manifest, so changes can be detected.</div>
+    <div class="b"><b>Extract + OCR</b>PDF / Word / HTML → text per page. Scanned pages → Amazon Textract (cached).</div>
+    <div class="b"><b>Tag</b>Doc types, multi-label: policy · summary · application.</div>
+    <div class="b warn"><b>Exclusion → attrition table</b>Bot check, broken link, no link, unreadable scan: excluded and counted, never rescued by hand. <b style="display:inline">Working set 132</b> (85 dev, 47 eval).</div>
+  </div>
+  <div class="arrow"><svg><use href="#arr"/></svg></div>
+
+  <!-- 3 ASK -->
+  <div class="col c-as">
+    <h2>3 · Ask <em>one call per hospital</em></h2>
+    <div class="b"><b>Build prompt <i class="who code">code</i></b>All text of the hospital's latest documents + rubric + references. No RAG. Over 80% of context window → skipped, never truncated.</div>
+    <div class="b"><b>call_model <i class="who ai">AI</i></b>Anthropic · Bedrock · open-weight (Kimi via InvokeModel). Same prompt and JSON schema. Cached; every call in the usage ledger.</div>
+    <div class="b"><b>Answer per criterion</b>YES · NO · N/A · UNCLEAR · NOT_FOUND + quote, document, page. Lists: languages, service-area counties. v7: 9 consistency points, a quote from each side.</div>
+    <div class="par">
+      <b>Final run · scripts/final_run.py</b>
+      <div class="meta">Kimi K3.1 max · v7 · 40 non-pilot dev · stops at $60 · no judge</div>
+      <div class="seq">
+        <div class="step">Prompt sizes checked; cost shown; asks before spending</div>
+        <div class="down">▼</div>
+        <div class="lanes">
+          <div class="lane"><b>Process 1</b>hfal ask · half</div>
+          <div class="lane"><b>Process 2</b>hfal ask · other half</div>
+        </div>
+        <div class="down">▼ dealt by prompt size so both finish together</div>
+        <div class="step">runcheck: right hospital, model, version; one answer per criterion</div>
+        <div class="down">▼</div>
+        <div class="step">Problems re-asked while retries still fix something</div>
+        <div class="down">▼</div>
+        <div class="step">All 40 OK → grade · score · size-check · report</div>
+      </div>
+    </div>
+  </div>
+  <div class="arrow"><svg><use href="#arr"/></svg></div>
+
+  <!-- 4 CHECK -->
+  <div class="col c-ch">
+    <h2>4 · Check <em>hallucination guards</em></h2>
+    <div class="b"><b>Schema check <i class="who code">code</i></b>Malformed reply rejected, kept aside, never used. Open-weight retried once.</div>
+    <div class="b"><b>Quote verification <i class="who code">code</i></b>Every YES/NO quote must appear word for word in the extracted text. If not → UNCLEAR.</div>
+    <div class="b"><b>Form check <i class="who code">code</i></b>≥98% match to the state form and no paragraph missing → YES by code. Model YES below that → UNCLEAR.</div>
+    <div class="b"><b>FPL check <i class="who code">code</i></b>Dollar amounts identify the poverty-table year; overrides the model when clear.</div>
+    <div class="b"><b>Max FPL check <i class="who code">code</i></b>Model NO but the application states 400% → UNCLEAR. Never creates a YES.</div>
+    <div class="b"><b>Consistency <i class="who code">code</i></b>Both sides' quotes verified; nine points combined in code.</div>
+    <div class="b"><b>Open, not guessed</b>NOT_FOUND is never NO. UNCLEAR / NOT_FOUND / unverified go to a person.</div>
+  </div>
+  <div class="arrow"><svg><use href="#arr"/></svg></div>
+
+  <!-- 5 GRADE & SCORE -->
+  <div class="col c-gr">
+    <h2>5 · Grade &amp; score</h2>
+    <div class="b"><b>Letter grade <i class="who code">code</i></b>grade.py + rubric.yaml, never AI. Reproduces 211/211 CSSNY letters. Open items count as NO for the letter only → "provisional".</div>
+    <div class="b"><b>Score vs CSSNY <i class="who code">code</i></b>Per criterion: confusion matrix, false YES and false NO apart, flag rate, quote-verification rate, letter agreement, 95% intervals.</div>
+    <div class="b"><b>Two scores</b>Headline: sheet as is. Beside it, dev only: corrected labels (an upper estimate).</div>
+    <div class="b"><b>Diagnostics</b>doc-check: missing documents → discovery suspects. consistency-check: what-ifs.</div>
+    <div class="b"><b>Long-context checks</b>size-check: error rate by prompt size. Shuffled document order.</div>
+  </div>
+  <div class="arrow"><svg><use href="#arr"/></svg></div>
+
+  <!-- 6 IMPROVE -->
+  <div class="col c-im">
+    <h2>6 · Improve <em>dev only</em></h2>
+    <div class="b"><b>Disagreements <i class="who code">code</i></b>Code finds where the model and CSSNY's sheet differ.</div>
+    <div class="dn">▼</div>
+    <div class="b"><b>Judge <i class="who ai">AI</i></b>Claude Opus explains why each happened; its quote is verified. Never decides a match.</div>
+    <div class="dn">▼</div>
+    <div class="b"><b>Hand buckets <i class="who person">person</i></b>model missed · model misjudged · rubric differs · golden error · site changed · doc not found · ambiguous</div>
+    <div class="dn">▼</div>
+    <div class="b"><b>Corrected labels <i class="who code">code</i></b>Separate file rebuilt from the review; the sheet is never edited. Feeds the second score.</div>
+    <div class="dn">▼</div>
+    <div class="b"><b>New prompt version</b>Wording change → bump version (v5 → v7 → v8). Discovery fixes logged.</div>
+    <div class="loop"><svg><use href="#back"/></svg><div>Back to 3 · Ask<span>or 2 · Collect for discovery fixes</span></div></div>
+    <div class="b" style="margin-top:4px"><b>Freeze → final eval</b>Prompt, criteria, rubric, discovery rules frozen; 47 eval hospitals scored once.</div>
+  </div>
+  <div class="arrow"><svg><use href="#arr"/></svg></div>
+
+  <!-- 7 REPORT & MONITOR -->
+  <div class="col c-re">
+    <h2>7 · Report &amp; monitor</h2>
+    <div class="b"><b>hfal report → results/</b>hospitals.csv · criteria.csv · report.html: letter, plain-language explanation quoting the law, verified quote with link and page. No CSSNY labels.</div>
+    <div class="b"><b>Shown with every result</b>Attrition table, robots.txt disclosure, model, prompt version, run id.</div>
+    <div class="b"><b>Monthly check · hfal monitor</b>Refetch, compare manifests: new / changed / removed / unreachable / moved. Re-ask only if extracted text changed.</div>
+    <div class="b"><b>Dashboard &amp; map</b>Reads results/latest/; letter grades and a statewide map for advocates, regulators, lawmakers.</div>
+  </div>
+</div>
+
+<div class="rules">
+  <h3>Ground rules</h3>
+  <span>Accuracy beats cost; when unsure, flag.</span>
+  <span>False "eligible" and wrongly steering a patient away are equally serious.</span>
+  <span>The AI never grades; the judge never decides.</span>
+  <span>CSSNY's sheet is never edited, committed or shown.</span>
+</div>
+<script>
+  // #focus=N fades every step but N (walk-through slides); #bg=RRGGBB paints the page background (render.sh shoots
+  // each chart on white and on black, and transparent.py turns the pair into a transparent PNG).
+  var params = {};
+  (location.hash || "").replace("#", "").split("&").forEach(function (kv) { var p = kv.split("="); if (p[0]) params[p[0]] = p[1]; });
+  if (params.focus) document.body.setAttribute("data-focus", params.focus);
+  if (params.bg) document.body.style.background = "#" + params.bg;
+</script>
+</body></html>

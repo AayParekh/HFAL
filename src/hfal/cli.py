@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from . import consistency, corrected, doccheck, monitor, paths, report, sizecheck, usage
-from .ask import iter_ask, new_run_id, ping, write_skipped
+from .ask import iter_ask, new_run_id, ping, write_failed, write_skipped
 from .discover import discover_all
 from .extract import extract_all
 from .fetch import fetch_all
@@ -25,8 +25,8 @@ def _only(values):
 def working_set(set_name: str = "all") -> list[str]:
     """Hospitals that passed every exclusion check (data/working_set.csv, written by scripts/attrition.py).
 
-    Sites blocked by robots.txt or a bot check, broken links, and documents that need OCR are left out
-    on purpose (PLAN.md). Without that file, falls back to every hospital that has extracted text.
+    Sites blocked by a bot check, broken links, and scans that OCR could not read are left out on purpose
+    (PLAN.md); robots.txt excludes a site only while fetch.respect_robots is true (false since Nov 12). Without that file, falls back to every hospital that has extracted text.
     """
     f = paths.DATA / "working_set.csv"
     if not f.exists():
@@ -63,14 +63,18 @@ def check_versions(run_id: str | None = None) -> None:
                          f"set prompt_version and criteria_file to the run's version first")
 
 
-def run_ask(ids: list[str], run_id: str, dry_run: bool = False) -> list[dict]:
-    """Ask each hospital (the body of `hfal ask`, also used by `hfal monitor`). Returns the hospitals skipped as too
-    large. Prints the usage summary and writes runs/RUN_ID/usage.json even when an error stops it part-way."""
-    skipped = []
+def run_ask(ids: list[str], run_id: str, dry_run: bool = False) -> tuple[list[dict], list[dict]]:
+    """Ask each hospital (the body of `hfal ask`, also used by `hfal monitor`). Returns (skipped as too large, failed:
+    the model gave no usable answer). Prints the usage summary and writes runs/RUN_ID/usage.json and failed.json even
+    when an error stops it part-way."""
+    skipped, failed = [], []
     totals = usage.Totals()
     try:
         for hid, r, skip in iter_ask(ids, run_id, dry_run=dry_run):
-            if skip:
+            if skip and skip["reason"] == "model_failed":
+                failed.append(skip)
+                print(f"{hid}  FAILED  {skip['error'][:300]}")
+            elif skip:
                 skipped.append(skip)
                 print(f"{hid}  SKIPPED too large for one call  about {skip['est_tokens']} tokens, "
                       f"limit {skip['limit_tokens']}")
@@ -85,9 +89,15 @@ def run_ask(ids: list[str], run_id: str, dry_run: bool = False) -> list[dict]:
         if not dry_run and (totals.fresh or totals.cached):
             usage.write_run_usage(run_id, "ask", totals)
             print("\n".join(totals.lines("ask usage")))
+        if not dry_run:
+            write_failed(run_id, failed)
+            if failed:
+                print(f"\nFAILED {len(failed)} (no usable answer; billed, see `hfal usage --run {run_id} --by status`). "
+                      f"To ask them again (the rest come from the cache):\n  uv run hfal ask --run-id {run_id} "
+                      f"--hospital {' '.join(f['hospital_id'] for f in failed)}  (plus the same --model)")
     if not dry_run:
         write_skipped(run_id, skipped)
-    return skipped
+    return skipped, failed
 
 
 def grade_run(run_id: str) -> None:
@@ -151,7 +161,9 @@ def run_monitor(requested: list[str] | None, ask: bool) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(prog="hfal")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("ping", help="tiny request to check the model provider's credentials and model access")
+    preset_help = "use this preset from settings.yaml `models:` instead of the `{}:` section (for comparing models)"
+    s = sub.add_parser("ping", help="tiny request to check the model provider's credentials and model access")
+    s.add_argument("--model", help=preset_help.format("model"))
     s = sub.add_parser("sources", help="write landing-page rows of data/sources.csv from data/hospitals.csv")
     s.add_argument("--set", choices=["dev", "eval", "all"], default="dev")
     s.add_argument("--hospital", nargs="*", help="limit to these hospital_ids")
@@ -166,16 +178,19 @@ def main() -> None:
                    help="which part of the working set to ask when --hospital is not given (default: all)")
     s.add_argument("--sample", type=int, help="ask only N hospitals chosen at random from the set (needs --seed)")
     s.add_argument("--seed", type=int, help="seed for --sample, so the same hospitals can be asked again")
+    s.add_argument("--model", help=preset_help.format("model"))
     s = sub.add_parser("judge", help="explain the disagreements with the golden labels (dev hospitals only)")
     s.add_argument("--run", required=True, help="run_id folder under runs/")
     s.add_argument("--hospital", nargs="*", help="limit to these hospital_ids")
     s.add_argument("--dry-run", action="store_true", help="count disagreements and prompt size; no model call")
+    s.add_argument("--model", help=preset_help.format("judge"))
     s = sub.add_parser("doc-check", help="count doc_not_found rows and missing document types (discovery check)")
     s.add_argument("--run", help="run_id that `hfal judge` has been run on (adds the doc_not_found counts)")
     s.add_argument("--min-rows", type=int, default=doccheck.DEFAULT_MIN_ROWS,
                    help="doc_not_found rows that make a dev hospital a suspect (default 2)")
     s = sub.add_parser("size-check", help="error rate by prompt size (long-context check 1; dev hospitals only)")
-    s.add_argument("--run", required=True, help="run_id folder under runs/")
+    s.add_argument("--run", action="append", required=True,
+                   help="run_id folder under runs/; repeat to pool runs asked with the same prompt")
     s.add_argument("--big-tokens", type=int, default=sizecheck.DEFAULT_BIG_TOKENS,
                    help="hospitals with a prompt above this many tokens form their own group (default 150000)")
     s = sub.add_parser("consistency-check",
@@ -200,6 +215,8 @@ def main() -> None:
     s.add_argument("--run", action="append", required=True, help="run_id folder under runs/; repeat for several runs")
     s.add_argument("--out", help="output folder (default results/TODAY/, also copied to results/latest/)")
     args = p.parse_args()
+    if getattr(args, "model", None):
+        paths.use_model("judge" if args.cmd == "judge" else "model", args.model)
 
     if args.cmd == "ping":
         r = ping(paths.settings()["model"])
@@ -225,14 +242,15 @@ def main() -> None:
             if args.set == "eval":
                 raise SystemExit("sampling is for dev; the eval set is asked whole, at a checkpoint (PLAN.md)")
             ids = pick_sample(ids, args.sample, args.seed)
-        skipped = run_ask(ids, run_id, dry_run=args.dry_run)
+        skipped, failed = run_ask(ids, run_id, dry_run=args.dry_run)
         if not args.dry_run:
             if args.sample:
                 (paths.RUNS / run_id).mkdir(parents=True, exist_ok=True)
                 (paths.RUNS / run_id / "sample.json").write_text(
                     json.dumps({"set": args.set, "n": args.sample, "seed": args.seed}), encoding="utf-8")
             print(f"run_id: {run_id}")
-        print(f"asked {len(ids) - len(skipped)} of {len(ids)} hospitals; skipped as too large: {len(skipped)}")
+        print(f"asked {len(ids) - len(skipped) - len(failed)} of {len(ids)} hospitals; skipped as too large: "
+              f"{len(skipped)}; failed: {len(failed)}")
     elif args.cmd == "judge":
         check_versions(args.run)
         print(json.dumps(judge_run(args.run, only=_only(args.hospital), dry_run=args.dry_run), indent=2))
@@ -247,7 +265,7 @@ def main() -> None:
             where = doccheck.write_csv_to(paths.DATA / "review" / "doc_check.csv", result["dev_rows"])
         print(f"dev rows (hospital ids, no labels) -> {where}")
     elif args.cmd == "size-check":
-        result = sizecheck.build(args.run, args.big_tokens)
+        result = sizecheck.build(args.run if len(args.run) > 1 else args.run[0], args.big_tokens)
         print("\n".join(sizecheck.lines(result)))
         print(f"aggregates -> {sizecheck.write_csv(result)}")
     elif args.cmd == "consistency-check":

@@ -1,13 +1,15 @@
-"""Turn raw PDFs and HTML into per-page text JSON."""
+"""Turn raw PDFs and HTML into per-page text JSON. Scanned PDF pages go through OCR (src/hfal/ocr.py) when
+settings.yaml `ocr.enabled` is on."""
 
 import json
+import sys
 from pathlib import Path
 
 import bs4
 import pymupdf
 from bs4 import BeautifulSoup
 
-from . import paths
+from . import ocr, paths
 from .fetch import latest_manifest
 
 MIN_CHARS_PER_PAGE = 50  # below this on average, assume a scan
@@ -22,19 +24,32 @@ def extractor_stamp() -> str:
     return f"{EXTRACTOR_VERSION}+pymupdf{pymupdf.version[0]}+bs4{bs4.__version__}"
 
 
-def _stored_stamp(path: Path) -> str | None:
+def _stored(path: Path) -> dict | None:
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get("extractor")
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None   # missing or unreadable: extract again
+
+
+def _up_to_date(stored: dict | None, stamp: str, ocr_wanted: bool) -> bool:
+    """Whether a text file can be kept. ocr_wanted: OCR is on and the file is a PDF.
+
+    Plain stamp: kept, unless it is a scan and OCR is now on (then OCR it). OCR stamp: kept while OCR is on; with
+    OCR switched off it is redone without OCR, so the switch really means no OCR text is sent."""
+    s = (stored or {}).get("extractor")
+    if s == stamp:
+        return not (ocr_wanted and stored.get("needs_ocr"))
+    return ocr_wanted and s == stamp + ocr.stamp_suffix()
+
+
+def _too_little_text(pages: list[str]) -> bool:
+    return not pages or sum(len(p.strip()) for p in pages) < MIN_CHARS_PER_PAGE * len(pages)
 
 
 def extract_pdf(path: Path) -> tuple[list[str], bool]:
     with pymupdf.open(path) as doc:
         pages = [page.get_text() for page in doc]
-    chars = sum(len(p.strip()) for p in pages)
-    needs_ocr = not pages or chars < MIN_CHARS_PER_PAGE * len(pages)
-    return pages, needs_ocr
+    return pages, _too_little_text(pages)
 
 
 def extract_docx(path: Path) -> tuple[list[str], bool]:
@@ -59,8 +74,13 @@ def extract_html(path: Path) -> tuple[list[str], bool]:
     return [text], len(text.strip()) < MIN_CHARS_PER_PAGE
 
 
-def extract_all(only: set[str] | None = None) -> None:
+def extract_all(only: set[str] | None = None, ocr_client=None) -> None:
+    """ocr_client: a Textract client to use instead of one made from settings.yaml `ocr` (tests pass a fake)."""
     stamp = extractor_stamp()
+    ocr_cfg = ocr.settings()
+    ocr_on = ocr.enabled(ocr_cfg)
+    client = ocr_client
+    failures: list[str] = []
     for hdir in sorted(p for p in paths.RAW.iterdir() if p.is_dir()):
         hid = hdir.name
         if only and hid not in only:
@@ -68,23 +88,45 @@ def extract_all(only: set[str] | None = None) -> None:
         for item in latest_manifest(hid):
             src = hdir / "files" / f"{item['sha8']}.{item['ext']}"
             out = paths.TEXT / hid / f"{item['sha8']}.json"
-            if not src.exists() or _stored_stamp(out) == stamp:
+            if not src.exists() or _up_to_date(_stored(out), stamp, ocr_on and item["ext"] == "pdf"):
                 continue
+            ocr_info = None
             if item["ext"] == "pdf":
                 pages, needs_ocr = extract_pdf(src)
+                if needs_ocr and ocr_on:
+                    try:
+                        client = client or ocr.make_client(ocr_cfg)
+                        pages, ocr_info = ocr.ocr_pdf(src, pages, hid, item["sha8"], client, ocr_cfg,
+                                                      MIN_CHARS_PER_PAGE)
+                        needs_ocr = _too_little_text(pages)
+                    except ocr.OCR_ERRORS as e:
+                        # Not OCR'd: written with the plain stamp and needs_ocr, so the next extract tries again and,
+                        # until then, attrition counts the hospital as excluded (scanned), never asked on no text.
+                        failures.append(f"{hid} {item['sha8']}: {type(e).__name__}: {e}")
+                        if ocr.is_access_error(e):
+                            ocr_on = False      # the same error would repeat on every page; stop trying this run
             elif item["ext"] == "html":
                 pages, needs_ocr = extract_html(src)
             elif item["ext"] == "docx":
                 pages, needs_ocr = extract_docx(src)
             else:
                 continue
+            record = {"sha8": item["sha8"], "source_url": item["url"], "label": item.get("label", ""),
+                      "extractor": stamp + (ocr.stamp_suffix() if ocr_info else ""), "needs_ocr": needs_ocr,
+                      "pages": pages}
+            if ocr_info:
+                record["ocr"] = ocr_info
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(
-                json.dumps(
-                    {"sha8": item["sha8"], "source_url": item["url"], "label": item.get("label", ""),
-                     "extractor": stamp, "needs_ocr": needs_ocr, "pages": pages},
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-            print(f"{hid}  {item['sha8']}  pages={len(pages)}  needs_ocr={needs_ocr}")
+            out.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+            note = f"  ocr_pages={len(ocr_info['pages'])}" if ocr_info else ""
+            print(f"{hid}  {item['sha8']}  pages={len(pages)}  needs_ocr={needs_ocr}{note}")
+    if failures:
+        print(f"\nOCR failed for {len(failures)} scanned document(s); they keep needs_ocr (their hospitals stay "
+              f"excluded) and the next `hfal extract` tries again:", file=sys.stderr)
+        for f in failures:
+            print(f"  {f}", file=sys.stderr)
+        if not ocr_on:
+            profile = ocr_cfg.get("aws_profile")
+            print("OCR stopped after an AWS credentials or permission error. Sign in "
+                  + (f"(`aws sso login --profile {profile}`) " if profile else "")
+                  + "and check the role may call textract:DetectDocumentText.", file=sys.stderr)

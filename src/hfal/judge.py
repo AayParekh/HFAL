@@ -25,7 +25,7 @@ from collections import Counter
 
 from . import paths, usage
 from .ask import (TooLarge, _verify, call_model, reference_block, estimate_tokens, format_criterion, input_limit_tokens,
-                  load_documents, render_documents, _obj, PAGE)
+                  load_documents, model_id, render_documents, _obj, PAGE)
 from .score import load_golden, load_run, score_run
 from .sources import load_table
 
@@ -128,7 +128,7 @@ def judge_hospital(hid: str, run_id: str, golden: dict, run: dict, criteria: dic
     system = SYSTEM + (f"\n\nThe checker was given these rules for reading the documents; judge by them too:\n{rules}" if rules else "")
     system += f"\n\n{reference_block()}" if reference_block() else ""
     chars = len(prompt) + len(system)
-    est, limit = estimate_tokens(chars, cfg_all), input_limit_tokens(cfg_all)
+    est, limit = estimate_tokens(chars, cfg_all), input_limit_tokens(cfg_all, "judge")
     if est > limit:
         raise TooLarge(hid, est, limit)
     if dry_run:
@@ -187,11 +187,23 @@ def write_judge_csv(run_id: str) -> int:
     return len(rows)
 
 
+def check_same_judge(run_dir, judge_model: str) -> None:
+    """Stop before any call when the run was already judged by another model: its judge/ files and judge.csv would be
+    overwritten by a mix of two judges. (One judge per run; compare judges on copies of a run.)"""
+    for p in sorted((run_dir / "judge").glob("*.json")) if (run_dir / "judge").is_dir() else []:
+        earlier = json.loads(p.read_text(encoding="utf-8")).get("judge_model") or ""
+        if earlier and earlier != judge_model:
+            raise SystemExit(f"{run_dir.name} was already judged by {earlier}; this judge is {judge_model}. "
+                             f"One judge per run: move {run_dir / 'judge'} and judge.csv aside first.")
+
+
 def judge_run(run_id: str, only: set[str] | None = None, dry_run: bool = False) -> dict:
     """Judge every dev hospital in the run that has disagreements. Prints counts only."""
     run_dir = paths.RUNS / run_id
     if not run_dir.is_dir():
         raise SystemExit(f"{run_dir} not found")
+    if not dry_run:
+        check_same_judge(run_dir, model_id(judge_config()))
     run = load_run(run_dir)
     golden = load_golden(paths.GOLDEN / "golden.csv")
     criteria = {c["id"]: c for c in paths.criteria()}

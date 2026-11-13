@@ -10,6 +10,9 @@ A document passes when its match reaches `pass_share` (settings.yaml `form_check
 the state form is mostly missing (`min_paragraph_share`). The second rule exists because one omitted paragraph is
 only about 2% of the form, which the first rule alone would let through, and the criterion says that using only part
 of the form is NO.
+
+Not compared (rule B, Nov 13): the form's instructions addressed to the hospital and its uninsured sliding-scale lines,
+which the form lets a hospital make more generous (MAY_DIFFER below).
 """
 
 import re
@@ -20,6 +23,20 @@ CRITERION = "entire_uniform_application"
 N = 4                       # words per window
 MIN_PARAGRAPH_WORDS = 12    # shorter reference lines (headings, table cells) are not judged on their own
 TEMPLATE_LINE = re.compile(r"\(HOSPITAL NAME\)|\(PHONE NUMBER\)")   # the form's fill-in line: every hospital words it differently
+# Lines of the state form a hospital may leave out or change (rule B, owner, Nov 13). They are not compared; the
+# prompt still shows the whole form. Matched by their first words, so the 10% and 20% sliding-scale lines both count.
+#   - instructions addressed to the hospital, not to the patient
+#   - the uninsured sliding-scale lines: the form itself says hospitals may give greater discounts (the two lines
+#     above), so a hospital's own, more generous table is not "part of the form missing". Whether the application
+#     has an income and discount table at all is checked by income_and_discount_tables_included_in_application.
+# Seen on the 77 Kimi v7 dev hospitals: 8 open answers and 1 NO became YES (CSSNY's sheet: 8 YES, 1 NO), 1 YES became
+# open (sheet NO). Chosen partly after seeing those dev numbers: confirm at the eval checkpoint (PLAN.md).
+MAY_DIFFER = (
+    "This application must be printed in the primary languages",                   # instruction to the hospital
+    "Nothing limits a hospital's ability to establish patient eligibility",        # instruction to the hospital
+    "Hospitals may choose to provide greater discounts",                           # instruction to the hospital
+    "Uninsured patients: Sliding scale up to",                                     # the hospital may be more generous
+)
 
 
 def _words(text: str) -> list[str]:
@@ -32,11 +49,18 @@ def _windows(words: list[str]) -> list[tuple[str, ...]]:
     return list(zip(*(words[i:] for i in range(N))))
 
 
+def may_differ(line: str) -> bool:
+    """A line of the form that a hospital may leave out or change (MAY_DIFFER)."""
+    words = " ".join(_words(line))
+    return any(words.startswith(" ".join(_words(p))) for p in MAY_DIFFER)
+
+
 def reference_lines(reference: str) -> list[str]:
-    """The state form's lines without the page markers, the hospital fill-in line, and the lines with no letters
-    (the poverty table's dollar figures, a lone "$")."""
+    """The state form's lines without the page markers, the hospital fill-in line, the lines with no letters
+    (the poverty table's dollar figures, a lone "$") and the lines a hospital may leave out or change (MAY_DIFFER)."""
     return [ln.strip() for ln in reference.splitlines()
-            if re.search(r"[^\W\d_]", ln) and not ln.startswith("[[page") and not TEMPLATE_LINE.search(ln)]
+            if re.search(r"[^\W\d_]", ln) and not ln.startswith("[[page") and not TEMPLATE_LINE.search(ln)
+            and not may_differ(ln)]
 
 
 def match(reference: str, pages: list[str]) -> dict:
@@ -86,7 +110,8 @@ def quote_from(reference: str, doc: dict) -> tuple[str, int | None] | None:
 
 def record(best: dict, cfg: dict) -> dict:
     """The match as saved in the run file (`form_check`)."""
-    return {**best, "passes": passes(best, cfg), "pass_share": cfg["pass_share"], "min_paragraph_share": cfg["min_paragraph_share"]}
+    return {**best, "passes": passes(best, cfg), "pass_share": cfg["pass_share"],
+            "min_paragraph_share": cfg["min_paragraph_share"], "lines_a_hospital_may_change": "not compared (rule B)"}
 
 
 def apply(answer: dict, reference: str, docs: list[dict], cfg: dict, best: dict | None = None) -> tuple[dict, dict | None]:

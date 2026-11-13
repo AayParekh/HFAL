@@ -1,0 +1,133 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cost waterfall</title>
+<!--
+  How each decision moved the average model cost of checking one hospital (one `ask` call), with no judge. Anchor: $0.25 per hospital for prompt v5 on Sonnet 5.5 at high (83K input and 8.5K output tokens per
+  hospital on the 10-hospital sample, Nov 10). Ratios measured on hospitals asked both ways (usage ledger runs/usage.csv,
+  Nov 10-12, 2026): v2 -> v5 x1.125 (6 Sonnet hospitals, so v2 = $0.25 / 1.125), v5 -> v7 x1.22 (6), Sonnet -> Kimi K3.1
+  at high x1.37 (1), high -> max x1.74 (1). Check: v2 -> v7 directly is x1.37 on 12 hospitals, the chain gives x1.37.
+  Prompt caching: -$0.017 per hospital (measured, Kimi).
+  render.sh adds #bg=ffffff / #bg=000000 to draw the chart alone, which transparent.py turns into a transparent PNG.
+-->
+<style>
+.viz-root{
+  --text-primary:#1d2433; --text-secondary:#52576a; --text-muted:#7a8091;
+  --up:#e34948; --down:#2a78d6; --total:#5f6577; --axis:#c9cdd6; --grid:#e4e6ec;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--text-primary)}
+body.render{zoom:2;width:1600px;height:680px;overflow:hidden}
+.viz-root{width:1600px;padding:24px 40px 20px}
+svg{display:block;overflow:visible}
+svg text{font-family:inherit}
+.foot{font-size:14px;color:var(--text-secondary);margin-top:10px;line-height:1.45;max-width:1480px}
+#tip{position:fixed;pointer-events:none;background:#1d2433;color:#fff;font-size:13px;line-height:1.35;padding:7px 10px;
+  border-radius:6px;opacity:0;transition:opacity .08s;max-width:340px}
+details{margin-top:14px;font-size:14px}
+table{border-collapse:collapse;margin-top:8px}
+th,td{padding:4px 12px;border-bottom:1px solid var(--axis);text-align:right}
+th:first-child,td:first-child{text-align:left}
+body.render details,body.render #tip{display:none}
+</style></head>
+<body>
+<div class="viz-root">
+  <svg width="1520" height="572" role="img"
+       aria-label="Waterfall of the average model cost of checking one hospital, no judge: $0.22 on prompt v2 with Sonnet 5.5, plus $0.03 for the v5 rubric, $0.06 for prompt v7, $0.11 for Kimi K3.1, $0.31 for max effort, minus $0.02 for prompt caching, ending at $0.71."></svg>
+  <div class="foot">
+    Average model cost of checking one hospital (one call for all 18 criteria; no judge). Each step multiplies the cost by a
+    ratio measured on hospitals asked both ways (how many is shown under each step), so the values are estimates, not a
+    measured run; hospitals with more documents cost more. Prices per million tokens: Sonnet 5.5 $2 / $10, Kimi K3.1
+    $4.40 / $22. Source: usage ledger, Nov 10–12, 2026.
+  </div>
+  <details><summary>Table view</summary><table></table></details>
+</div>
+<div id="tip"></div>
+<script>
+// Per hospital, in dollars. Running levels are rounded to the cent first and each step is the difference of two
+// rounded levels, so the labels always add up.
+const c = x => Math.round(x * 100) / 100;
+const ask5 = 0.25, ask2 = ask5 / 1.125, ask7 = ask5 * 1.22, askK = ask7 * 1.37, askM = askK * 1.74, askC = askM - 0.017;
+const L = [ask2, ask5, ask7, askK, askM, askC].map(c);
+const d = i => c(L[i] - L[i - 1]);
+// [label, sub-label, note, delta or null for a total]
+const STEPS = [
+  ["Prompt v2", "Sonnet 5.5 · high effort", "worked back from v5's $0.25 · v2 vs v5 on 6", null],
+  ["Prompt v5: rubric", "checks, reading rules, state form", "+12.5% · measured on 6", d(1)],
+  ["Prompt v7", "consistency point by point", "+22% · measured on 6", d(2)],
+  ["Sonnet 5.5 → Kimi K3.1", "same effort (high)", "+37% · measured on 1", d(3)],
+  ["Effort high → max", "on Kimi K3.1", "+74% · measured on 1", d(4)],
+  ["Prompt caching", "shared system prompt", "about 2% of a call · measured", d(5)],
+  ["Final run", "v7 · Kimi K3.1 max", "", null],
+];
+const start = L[0];
+let cum = start;
+const bars = STEPS.map((s, i) => {
+  if (i === 0) return {from: 0, to: start, total: true, v: start};
+  if (s[3] === null) return {from: 0, to: cum, total: true, v: cum};
+  const a = cum; cum = c(cum + s[3]);
+  return {from: Math.min(a, cum), to: Math.max(a, cum), total: false, v: s[3], end: cum};
+});
+STEPS[STEPS.length - 1][2] = `estimated · about $${Math.round(cum * 40)} for 40 hospitals`;
+const money = v => "$" + v.toFixed(2);
+const signed = v => (v > 0 ? "+$" : "−$") + Math.abs(v).toFixed(2);
+
+const params = Object.fromEntries(location.hash.replace("#", "").split("&").filter(Boolean).map(s => s.split("=")));
+if (params.bg) { document.body.classList.add("render"); document.body.style.background = "#" + params.bg; }
+
+const NS = "http://www.w3.org/2000/svg", svg = document.querySelector("svg"), tip = document.getElementById("tip");
+const el = (tag, attrs, text) => { const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; svg.appendChild(e); return e; };
+
+const X0 = 78, W = 1520 - X0, TOP = 30, H = 430, MAX = 0.82, BW = 118, R = 4;
+const slot = W / STEPS.length;
+const y = v => TOP + H - v / MAX * H;
+
+// grid and axis
+for (let k = 0; k <= 8; k++) {
+  const t = k / 10;
+  el("line", {x1: X0, x2: X0 + W, y1: y(t), y2: y(t), stroke: k ? "var(--grid)" : "var(--axis)", "stroke-width": k ? 1 : 1.5});
+  el("text", {x: X0 - 12, y: y(t) + 5, "font-size": 15, fill: "var(--text-muted)", "text-anchor": "end"}, money(t));
+}
+el("text", {x: 0, y: TOP - 14, "font-size": 15, fill: "var(--text-secondary)", "font-weight": 600},
+   "Model cost per hospital checked (US dollars)");
+
+// bars with a 4px rounded data end (top for totals and increases, bottom for decreases)
+const path = (x, top, bot, roundTop) => {
+  const h = bot - top, rr = Math.min(R, h / 2);
+  return roundTop
+    ? `M${x} ${bot}V${top + rr}Q${x} ${top} ${x + rr} ${top}H${x + BW - rr}Q${x + BW} ${top} ${x + BW} ${top + rr}V${bot}Z`
+    : `M${x} ${top}V${bot - rr}Q${x} ${bot} ${x + rr} ${bot}H${x + BW - rr}Q${x + BW} ${bot} ${x + BW} ${bot - rr}V${top}Z`;
+};
+bars.forEach((b, i) => {
+  const s = STEPS[i], cx = X0 + slot * i + slot / 2, x = cx - BW / 2;
+  const top = y(b.to), bot = y(b.from), up = b.total || b.v > 0;
+  el("path", {d: path(x, top, bot, up), fill: b.total ? "var(--total)" : (b.v > 0 ? "var(--up)" : "var(--down)")});
+  // connector to the next bar at the running total
+  if (i < bars.length - 1) {
+    const lvl = b.total ? b.to : b.end;
+    el("line", {x1: x + BW, x2: x + slot, y1: y(lvl), y2: y(lvl), stroke: "var(--text-muted)", "stroke-width": 1.2, "stroke-dasharray": "3 3"});
+  }
+  // value label above the bar
+  const txt = b.total ? money(b.v) : signed(b.v);
+  el("text", {x: cx, y: top - 10, "font-size": b.total ? 22 : 19, "font-weight": 700, fill: "var(--text-primary)", "text-anchor": "middle"}, txt);
+  // category labels
+  const ly = TOP + H + 30;
+  el("text", {x: cx, y: ly, "font-size": 16, "font-weight": b.total ? 700 : 600, fill: "var(--text-primary)", "text-anchor": "middle"}, s[0]);
+  el("text", {x: cx, y: ly + 21, "font-size": 14, fill: "var(--text-secondary)", "text-anchor": "middle"}, s[1]);
+  const words = s[2].split(" · ");
+  words.forEach((w, k) => el("text", {x: cx, y: ly + 46 + k * 18, "font-size": 13, fill: "var(--text-muted)", "text-anchor": "middle"}, w));
+  // hover
+  const hit = el("rect", {x: X0 + slot * i, y: TOP, width: slot, height: H, fill: "transparent"});
+  hit.addEventListener("mousemove", e => {
+    tip.innerHTML = `<b>${s[0]}: ${txt}</b><br>${s[1]}${s[2] ? "<br>" + s[2] : ""}` +
+                    (b.total ? "" : `<br>running total ${money(b.end)}`);
+    tip.style.left = e.clientX + 14 + "px"; tip.style.top = e.clientY + 14 + "px"; tip.style.opacity = 1;
+  });
+  hit.addEventListener("mouseleave", () => tip.style.opacity = 0);
+});
+
+// table view
+document.querySelector("table").innerHTML = "<tr><th>Step</th><th>Change</th><th>Running total</th><th>Basis</th></tr>" +
+  bars.map((b, i) => `<tr><td>${STEPS[i][0]} (${STEPS[i][1]})</td><td>${b.total ? "" : signed(b.v)}</td>` +
+    `<td>${money(b.total ? b.v : b.end)}</td><td>${STEPS[i][2]}</td></tr>`).join("");
+</script>
+</body></html>

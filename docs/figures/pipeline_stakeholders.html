@@ -1,0 +1,68 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>How the check works</title>
+<style>
+:root{--ink:#1b2232;--muted:#5a6377;--blue:#1d63c9;--violet:#6a3fc4;--green:#13804f;--amber:#b26205;--teal:#0d7a86}
+*{box-sizing:border-box;margin:0;padding:0}
+html{zoom:2}
+body{width:1920px;height:1080px;background:#fff;color:var(--ink);overflow:hidden;display:flex;flex-direction:column;
+  font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;padding:70px 64px 80px}
+h1{font-size:50px;letter-spacing:-.9px;font-weight:750;line-height:1.1}
+.sub{font-size:24px;color:var(--muted);margin-top:10px}
+
+.wrap{flex:1;display:flex;align-items:center}
+.steps{width:100%;display:grid;grid-template-columns:1fr 50px 1fr 50px 1fr 50px 1fr 50px 1fr;align-items:stretch;min-height:560px}
+.st{border-radius:18px;padding:28px 26px;background:var(--bg);border-top:9px solid var(--c);transition:none}
+.st .n{display:inline-flex;width:50px;height:50px;border-radius:50%;background:var(--c);color:#fff;font-weight:750;font-size:26px;
+  align-items:center;justify-content:center;margin-bottom:20px}
+.st h2{font-size:33px;line-height:1.14;margin-bottom:16px;letter-spacing:-.4px}
+.st p{font-size:24px;line-height:1.42;color:#333b4d}
+.st p+p{margin-top:14px}
+.a{display:flex;align-items:center;justify-content:center}
+.a svg{width:44px;height:44px}
+.s1{--c:var(--blue);--bg:#eef4fd}
+.s2{--c:var(--violet);--bg:#f4f0fd}
+.s3{--c:var(--green);--bg:#e8f6ee}
+.s4{--c:var(--amber);--bg:#fdf4e6}
+.s5{--c:var(--teal);--bg:#e9f6f7}
+
+/* walk-through versions: one step in focus, the others faded */
+body[data-focus] .st{opacity:.28;filter:saturate(.4)}
+body[data-focus] .a{opacity:.35}
+body[data-focus="1"] .s1, body[data-focus="2"] .s2, body[data-focus="3"] .s3,
+body[data-focus="4"] .s4, body[data-focus="5"] .s5{opacity:1;filter:none;box-shadow:0 0 0 4px var(--c) inset}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="arr" viewBox="0 0 24 24"><path d="M3 12h15M13 6l6 6-6 6" fill="none" stroke="#9aa3b5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</defs></svg>
+
+<div class="wrap"><div class="steps">
+  <div class="st s1"><div class="n">1</div><h2>Collect the documents</h2>
+    <p>We start from each hospital's financial assistance web page and collect its policy, plain-language summary and application.</p>
+    <p>Scanned pages are converted to text.</p></div>
+  <div class="a"><svg><use href="#arr"/></svg></div>
+  <div class="st s2"><div class="n">2</div><h2>AI reads everything</h2>
+    <p>The AI reads all of a hospital's documents at once and answers 18 questions based on the law.</p>
+    <p>Every answer must quote the document it came from.</p></div>
+  <div class="a"><svg><use href="#arr"/></svg></div>
+  <div class="st s3"><div class="n">3</div><h2>Fact-check the AI</h2>
+    <p>Software confirms every quote appears word for word in the hospital's documents, and checks figures against official sources.</p>
+    <p>Anything it can't confirm goes to a person.</p></div>
+  <div class="a"><svg><use href="#arr"/></svg></div>
+  <div class="st s4"><div class="n">4</div><h2>Grade by fixed rules</h2>
+    <p>The letter grade comes from a fixed formula, never from the AI.</p>
+    <p>Given CSSNY's answers, it gives the same grade CSSNY gave for all 211 hospitals.</p></div>
+  <div class="a"><svg><use href="#arr"/></svg></div>
+  <div class="st s5"><div class="n">5</div><h2>Publish with evidence</h2>
+    <p>Each hospital gets a grade and a plain-language explanation of each problem, citing the law.</p>
+    <p>Every finding links to the exact page quoted.</p></div>
+</div></div>
+<script>
+  // #focus=N fades every step but N (walk-through slides); #bg=RRGGBB paints the page background (render.sh shoots
+  // each chart on white and on black, and transparent.py turns the pair into a transparent PNG).
+  var params = {};
+  (location.hash || "").replace("#", "").split("&").forEach(function (kv) { var p = kv.split("="); if (p[0]) params[p[0]] = p[1]; });
+  if (params.focus) document.body.setAttribute("data-focus", params.focus);
+  if (params.bg) document.body.style.background = "#" + params.bg;
+</script>
+</body></html>

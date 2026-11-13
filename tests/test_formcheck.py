@@ -119,3 +119,23 @@ def test_ask_applies_the_form_check_and_records_it(tmp_path, monkeypatch):
     assert a["answer"] == "YES" and a["model_answer"] == "NO" and a["quote_verified"] is True
     assert r["form_check"]["passes"] is True and r["form_check"]["sha8"] == "aaaa1111"
     assert json.loads((tmp_path / "runs" / "run1" / "1.json").read_text())["form_check"]["share"] == 1.0
+
+
+def _without(text: str, starts: tuple[str, ...]) -> str:
+    return "\n".join(ln for ln in text.splitlines() if not ln.strip().startswith(starts))
+
+
+def test_rule_b_lines_a_hospital_may_change_are_not_compared():
+    # The form's instructions to the hospital and its sliding-scale lines left out: still the entire form (rule B).
+    text = _without(body(), formcheck.MAY_DIFFER)
+    assert len(text) < len(body())
+    m = formcheck.match(REF, page(text))
+    assert m["share"] == 1.0 and m["missing"] == [] and formcheck.passes(m, CFG)
+
+
+def test_rule_b_does_not_excuse_a_missing_patient_paragraph():
+    # A paragraph the patient needs (their right to appeal) left out still fails, with or without rule B's lines.
+    appeal = "If you are denied financial assistance, you have the right to appeal."
+    text = _without(_without(body(), formcheck.MAY_DIFFER), (appeal,))
+    m = formcheck.match(REF, page(text))
+    assert not formcheck.passes(m, CFG) and any(x.startswith("If you are denied") for x in m["missing"])

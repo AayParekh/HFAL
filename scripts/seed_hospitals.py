@@ -5,6 +5,8 @@
 data/hospitals.csv columns
     hospital_id   PFI
     name, city, system   from the golden sheet's identity columns
+    address, zip  street address and ZIP code, from the identity columns "Address" and "Zip" (added Nov 13, for
+                  the reports; filled once into an older table, like any new column)
     set           dev (in data/sample_raw.csv) or eval (every other golden hospital)
     landing_url   where discovery starts; several URLs separated by spaces
     url_source    where landing_url came from: "golden sheet (Sept 2025)", or who/what changed it
@@ -18,7 +20,7 @@ Rules
     - Hospitals in the table but not in the golden sheet are kept.
 
 Reads ONLY identity columns of the golden sheet ("Permanent Facility Identifier (PFI)", "Hospital Name",
-"City", "System", "HFA Link"); no labels, grades or notes. Prints counts only.
+"Address", "City", "Zip", "System", "HFA Link"); no labels, grades or notes. Prints counts only.
 """
 
 import argparse
@@ -34,10 +36,12 @@ from urllib.parse import urlparse
 from hfal.schema import hospital_id
 
 ROOT = Path(__file__).resolve().parents[1]
-FIELDS = ["hospital_id", "name", "city", "system", "set", "landing_url", "url_source", "verified_at", "note"]
+FIELDS = ["hospital_id", "name", "address", "city", "zip", "system", "set", "landing_url", "url_source", "verified_at",
+          "note"]
 GOLDEN_SOURCE = "golden sheet (Sept 2025)"
 COLS = {"hospital_id": "Permanent Facility Identifier (PFI)", "name": "Hospital Name", "city": "City",
         "system": "System", "link": "HFA Link"}
+OPTIONAL_COLS = {"address": "Address", "zip": "Zip"}   # identity too; left blank when a sheet lacks them
 
 
 def clean_urls(cell: str, stats: Counter) -> list[str]:
@@ -65,6 +69,14 @@ def clean_urls(cell: str, stats: Counter) -> list[str]:
     return urls
 
 
+def zip_code(cell: str) -> str:
+    """A ZIP code as text: "12345.0" (a spreadsheet number) -> "12345"; a 4-digit number gets its leading zero back."""
+    z = cell.strip()
+    if z.endswith(".0") and z[:-2].isdigit():
+        z = z[:-2]
+    return z.zfill(5) if z.isdigit() and len(z) < 5 else z
+
+
 def read_golden(path: Path, stats: Counter) -> list[dict]:
     """One dict per hospital: hospital_id, name, city, system, urls. First row wins on duplicate PFIs."""
     with open(path, newline="", encoding="utf-8-sig") as f:
@@ -76,7 +88,8 @@ def read_golden(path: Path, stats: Counter) -> list[dict]:
     if missing:
         raise SystemExit(f"{path}: column(s) not found in the second header row: {missing}")
     idx = {k: names.index(v) for k, v in COLS.items()}
-    cell = lambda r, k: r[idx[k]] if idx[k] < len(r) else ""
+    idx.update({k: names.index(v) for k, v in OPTIONAL_COLS.items() if v in names})
+    cell = lambda r, k: r[idx[k]] if k in idx and idx[k] < len(r) else ""
 
     out, seen = [], set()
     for r in rows[2:]:
@@ -93,6 +106,7 @@ def read_golden(path: Path, stats: Counter) -> list[dict]:
         seen.add(hid)
         link = cell(r, "link")
         out.append({"hospital_id": hid, "name": cell(r, "name").strip(), "city": cell(r, "city").strip(),
+                    "address": cell(r, "address").strip(), "zip": zip_code(cell(r, "zip")),
                     "system": cell(r, "system").strip(), "urls": clean_urls(link, stats) if link.strip() else []})
     return out
 
@@ -111,7 +125,8 @@ def read_sample_ids(path: Path) -> set[str]:
 
 def from_golden(g: dict, dev_ids: set[str] | None) -> dict:
     return {
-        "hospital_id": g["hospital_id"], "name": g["name"], "city": g["city"], "system": g["system"],
+        "hospital_id": g["hospital_id"], "name": g["name"], "address": g.get("address", ""), "city": g["city"],
+        "zip": g.get("zip", ""), "system": g["system"],
         "set": "" if dev_ids is None else ("dev" if g["hospital_id"] in dev_ids else "eval"),
         "landing_url": " ".join(g["urls"]),
         "url_source": GOLDEN_SOURCE if g["urls"] else "",

@@ -8,15 +8,15 @@ from . import paths
 from .sources import LANDING_LABEL
 
 STAGES = ["in hospital table", "has landing_url", "landing page fetched", "documents found",
-          "all selected documents downloaded", "no document needs OCR", "not excluded by hand",
+          "all selected documents downloaded", "no scan left unread by OCR", "not excluded by hand",
           "asked", "graded with no open items"]
 WORKING_STAGE = 7   # passing this many stages = in the working set
 CATEGORY_TEXT = {
     "no_link": "no landing link",
-    "robots_txt": "blocked by robots.txt",
+    "robots_txt": "blocked by robots.txt",   # only while fetch.respect_robots is true (false since Nov 12)
     "bot_check": "bot check / access denied",
     "broken_or_empty": "broken link, moved site, or empty page",
-    "needs_ocr": "scanned document (needs OCR)",
+    "needs_ocr": "scanned document OCR could not read",   # OCR off, failed, or found too little text
     "excluded_by_hand": "excluded by hand",
     "not_run": "pipeline step not run yet",
     "too_large": "too large for one call",
@@ -81,6 +81,12 @@ def classify(h: dict, entries: list[dict], disc: dict | None, ocr: dict[str, boo
     if outcome == "incomplete":
         return 8, "incomplete"
     return 9, ""
+
+
+def robots_ignored(entries: list[dict], disc: dict | None) -> bool:
+    """True when something of this hospital's was fetched although its robots.txt disallows it (fetch.respect_robots
+    false, since Nov 12): a file in its latest manifest, or a page discovery read. Not an exclusion; it is reported."""
+    return any(e.get("robots_disallowed") for e in entries) or bool((disc or {}).get("robots_txt_ignored"))
 
 
 def full_manifest(hid: str) -> list[dict]:

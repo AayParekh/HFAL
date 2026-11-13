@@ -1,0 +1,148 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Hospital attrition</title>
+<!--
+  Two charts of the attrition table (PLAN.md, scripts/attrition.py, Nov 12, 2026):
+    #view=combined   all hospitals together
+    #view=split      dev and eval side by side
+  Opened without a hash, the page shows both, each with a table view. render.sh adds &bg=ffffff / &bg=000000 to draw
+  one chart alone on a plain background, which transparent.py turns into a transparent PNG.
+  Stage 7 (excluded by hand) is left out: it excludes no one.
+-->
+<style>
+.viz-root{
+  --text-primary:#1d2433; --text-secondary:#52576a; --text-muted:#7a8091;
+  --series-1:#2a78d6; --axis:#c9cdd6; --lost:#8a90a0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--text-primary)}
+body.render{zoom:2;width:1600px;height:690px;overflow:hidden}
+.viz-root{width:1600px;padding:30px 48px 24px}
+svg{display:block;overflow:visible}
+svg text{font-family:inherit}
+.foot{font-size:14px;color:var(--text-secondary);margin-top:12px;line-height:1.45;max-width:1450px}
+#tip{position:fixed;pointer-events:none;background:#1d2433;color:#fff;font-size:13px;line-height:1.35;padding:7px 10px;
+  border-radius:6px;opacity:0;transition:opacity .08s;max-width:340px}
+details{margin-top:14px;font-size:14px}
+table{border-collapse:collapse;margin-top:8px}
+th,td{padding:4px 12px;border-bottom:1px solid var(--axis);text-align:right}
+th:first-child,td:first-child{text-align:left}
+body.render details,body.render #tip{display:none}
+body.render .viz-root[hidden]{display:none}
+</style></head>
+<body>
+<div class="viz-root" id="combined">
+  <svg width="1504" height="550" role="img"
+       aria-label="Bar chart of hospitals left after each of six collection stages, all hospitals: 211 to 132."></svg>
+  <div class="foot">
+    A hospital stops at the first stage it fails; it is excluded and counted, never rescued by hand. Working set:
+    <b>132 hospitals</b>. Since Nov 12, 2026 robots.txt no longer excludes anyone (9 hospitals were collected despite it),
+    and scanned PDFs are read with OCR. No hospital is excluded by hand or for being too large for one model call.
+    Source: attrition table in PLAN.md (scripts/attrition.py), Nov 12, 2026.
+  </div>
+  <details><summary>Table view</summary><table></table></details>
+</div>
+<div class="viz-root" id="split">
+  <svg width="1504" height="550" role="img"
+       aria-label="Bar chart of hospitals left after each of six collection stages. Dev: 94 to 85. Eval: 117 to 47."></svg>
+  <div class="foot">
+    A hospital stops at the first stage it fails; it is excluded and counted, never rescued by hand. Working set:
+    <b>132 hospitals</b> (85 dev, 47 eval). Reasons are recorded for dev hospitals only; eval losses are shown as counts.
+    Since Nov 12, 2026 robots.txt no longer excludes anyone (3 dev and 6 eval hospitals were collected despite it), and
+    scanned PDFs are read with OCR. No hospital is excluded by hand or for being too large for one model call.
+    Source: attrition table in PLAN.md (scripts/attrition.py), Nov 12, 2026.
+  </div>
+  <details><summary>Table view</summary><table></table></details>
+</div>
+<div id="tip"></div>
+<script>
+// [stage, dev left, eval left, dev reason for the loss here, reason for the combined chart]
+const STAGES = [
+  ["In hospital table",          94, 117],
+  ["Has a landing link",         90,  83, "no landing link", "no landing link"],
+  ["Landing page fetched",       89,  80, "bot check / access denied", "landing page blocked or broken"],
+  ["Documents found",            85,  48, "2 bot check, 2 broken link or empty page", "bot check, moved site or empty page"],
+  ["All documents downloaded",   85,  47, null, "a selected document did not download"],
+  ["No scan left unread by OCR", 85,  47],
+];
+
+const params = Object.fromEntries(location.hash.replace("#", "").split("&").filter(Boolean).map(s => s.split("=")));
+if (params.bg) {
+  document.body.classList.add("render");
+  document.body.style.background = "#" + params.bg;
+  for (const id of ["combined", "split"]) document.getElementById(id).hidden = id !== (params.view || "combined");
+}
+
+const NS = "http://www.w3.org/2000/svg", tip = document.getElementById("tip");
+const LABEL_W = 262, TOP = 56, ROW = 78, BAR = 36, R = 4;
+const bottom = TOP + STAGES.length * ROW - (ROW - BAR) / 2 + 8;
+
+function draw(rootId, panels, max, scaleW, tick) {
+  const root = document.getElementById(rootId), svg = root.querySelector("svg");
+  const el = (tag, attrs, text) => { const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; svg.appendChild(e); return e; };
+  const x = v => v / max * scaleW;
+  el("defs", {}).innerHTML = `<pattern id="hatch-${rootId}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+    <line x1="0" y1="0" x2="0" y2="7" stroke="var(--lost)" stroke-width="1.6"/></pattern>`;
+
+  STAGES.forEach((s, i) => {
+    const cy = TOP + i * ROW + BAR / 2, last = i === STAGES.length - 1;
+    el("text", {x: 0, y: cy + 6, "font-size": 17, fill: "var(--text-muted)", "font-weight": 600}, String(i + 1));
+    el("text", {x: 24, y: cy + (last ? -2 : 6), "font-size": 17, fill: "var(--text-primary)", "font-weight": last ? 700 : 500}, s[0]);
+    if (last) el("text", {x: 24, y: cy + 17, "font-size": 14, fill: "var(--text-secondary)", "font-weight": 600}, "= working set");
+  });
+
+  panels.forEach(p => {
+    if (p.name) {
+      el("text", {x: p.x0, y: 18, "font-size": 21, "font-weight": 700, fill: "var(--text-primary)"}, p.name);
+      el("text", {x: p.x0 + p.noteX, y: 18, "font-size": 15, fill: "var(--text-secondary)"}, p.note);
+    }
+    el("line", {x1: p.x0, x2: p.x0, y1: TOP - 10, y2: bottom, stroke: "var(--axis)", "stroke-width": 1.5});
+    el("line", {x1: p.x0, x2: p.x0 + scaleW, y1: bottom, y2: bottom, stroke: "var(--axis)", "stroke-width": 1.5});
+    for (let t = 0; t <= max; t += tick) {
+      el("line", {x1: p.x0 + x(t), x2: p.x0 + x(t), y1: bottom, y2: bottom + 6, stroke: "var(--axis)", "stroke-width": 1.5});
+      el("text", {x: p.x0 + x(t), y: bottom + 22, "font-size": 13, fill: "var(--text-muted)", "text-anchor": "middle"}, t);
+    }
+    el("text", {x: p.x0 + scaleW + 14, y: bottom + 22, "font-size": 13, fill: "var(--text-muted)"}, "hospitals");
+
+    STAGES.forEach((s, i) => {
+      const v = p.value(s), prev = i ? p.value(STAGES[i - 1]) : v, lost = prev - v;
+      const y = TOP + i * ROW, last = i === STAGES.length - 1, why = p.why(s), w = x(v);
+      el("path", {d: `M${p.x0} ${y}H${p.x0 + w - R}Q${p.x0 + w} ${y} ${p.x0 + w} ${y + R}V${y + BAR - R}Q${p.x0 + w} ${y + BAR} ${p.x0 + w - R} ${y + BAR}H${p.x0}Z`,
+                  fill: "var(--series-1)"});
+      el("text", {x: p.x0 + w - 10, y: y + BAR / 2 + 6, "font-size": last ? 18 : 16, "font-weight": 700, fill: "#fff", "text-anchor": "end"}, v);
+      if (lost > 0) {   // lost here: hatched block from what is left up to the stage before, 2px gap
+        el("rect", {x: p.x0 + w + 2, y: y + 1, width: Math.max(x(lost) - 2, 5), height: BAR - 2,
+                    fill: `url(#hatch-${rootId})`, stroke: "var(--lost)", "stroke-width": 1, rx: 3});
+        const lx = p.x0 + Math.max(x(prev), w + 7) + 10;
+        el("text", {x: lx, y: why ? y + 14 : y + BAR / 2 + 6, "font-size": 16, "font-weight": 700, fill: "var(--text-primary)"}, `−${lost}`);
+        if (why) el("text", {x: lx, y: y + 32, "font-size": 14, fill: "var(--text-secondary)"}, why);
+      }
+      const hit = el("rect", {x: p.x0, y: y - 8, width: p.w, height: BAR + 16, fill: "transparent"});
+      hit.addEventListener("mousemove", e => {
+        tip.innerHTML = `<b>${p.name ? p.name + " · " : ""}${i + 1}. ${s[0]}</b><br>${v} left` +
+                        (lost ? `, ${lost} lost here` + (why ? ` (${why})` : "") : "");
+        tip.style.left = e.clientX + 14 + "px"; tip.style.top = e.clientY + 14 + "px"; tip.style.opacity = 1;
+      });
+      hit.addEventListener("mouseleave", () => tip.style.opacity = 0);
+    });
+  });
+
+  // table view
+  const cols = panels.map(p => p.name || "All hospitals");
+  root.querySelector("table").innerHTML = "<tr><th>Stage</th>" + cols.map(c => `<th>${c} left</th><th>${c} lost</th>`).join("") + "</tr>" +
+    STAGES.map((s, i) => `<tr><td>${i + 1}. ${s[0]}</td>` + panels.map(p => {
+      const v = p.value(s), lost = i ? p.value(STAGES[i - 1]) - v : 0, why = p.why(s);
+      return `<td>${v}</td><td>${lost ? lost + (why ? " (" + why + ")" : "") : ""}</td>`; }).join("") + "</tr>").join("");
+}
+
+// all hospitals together
+draw("combined", [{x0: LABEL_W, w: 1504 - LABEL_W, value: s => s[1] + s[2], why: s => s[4]}], 240, 780, 60);
+
+// dev and eval side by side
+const GAP = 64, PANEL_W = (1504 - LABEL_W - GAP) / 2;
+draw("split", [
+  {name: "Dev set", note: "used to improve the pipeline", noteX: 82, x0: LABEL_W, w: PANEL_W, value: s => s[1], why: s => s[3]},
+  {name: "Eval set", note: "held back, measured only", noteX: 86, x0: LABEL_W + PANEL_W + GAP, w: PANEL_W, value: s => s[2], why: () => null},
+], 120, 470, 30);
+</script>
+</body></html>

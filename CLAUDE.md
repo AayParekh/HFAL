@@ -16,7 +16,7 @@ with a letter grade and plain-language explanations of each failure; (3) a state
 advocates, regulators, lawmakers.
 
 **Current scope: the back-end pipeline, developed on CSSNY's 27-hospital sample plus 67 hospitals drawn at
-random from the rest (80 usable in dev, 34 usable in eval), and evaluated on the remaining hospitals in their hand-labeled golden set, plus a
+random from the rest (82 usable in dev, 41 usable in eval since OCR on Nov 12; 80 and 34 before), and evaluated on the remaining hospitals in their hand-labeled golden set, plus a
 monthly check for new or changed documents.
 No front end, no analytics yet. Schedule and task list: [PLAN.md](PLAN.md).**
 
@@ -87,7 +87,7 @@ Excel letter. 38 hospitals have text instead of a URL in HFA Link.
 Comma-separated, with a few note rows above the header row (the header row is the one with `Hospital`
 and `PFI` cells). Columns include `Hospital, Wave, Why in the sample, System, City, NYC?, PFI, HFA Link`
 plus CSSNY's grade columns. Provided by CSSNY; how it was drawn is unknown. 27 hospitals. **The whole
-sample is the dev set; the Wave column is ignored.** Only 13 of the 27 survive the exclusion policy, so 67 more
+sample is the dev set; the Wave column is ignored.** Only 13 of the 27 survived the exclusion policy (15 since OCR, Nov 12), so 67 more
 dev hospitals were drawn at random from the eval hospitals in the working set (see PLAN.md "Data split").
 
 ## Decisions already made
@@ -98,13 +98,25 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   parsing control, easy quote verification.
 - **No RAG, no text-to-SQL, no GraphRAG.** Send each hospital's whole extracted text to Claude and ask all
   criteria in one structured call. If a hospital's prompt would exceed 80% of the model's context window (`context_window_tokens` and
-  `max_input_share` in settings.yaml), skip it and count it as "too large for one call" (never truncate), or filter by doc type
+  `max_input_share` in settings.yaml; a model preset may set its own window and an open-weight one must; tokens estimated
+  at 2.3 characters each), skip it and count it as "too large for one call" (never truncate), or filter by doc type
   or add retrieval; never truncate silently. For consideration: does traditional RAG (chunking, embedding, etc.) make sense for the documents? 
 - **Claude via API, not a local model.** All model access goes through `hfal/ask.py::call_model`. Provider is a
   setting (`model.provider`: `anthropic` or `bedrock`, same SDK, same prompts and checks; README "Model
   providers"). Responses are cached per provider+model, run_id and provider/model are logged. The SDK has no
   `temperature` argument any more, so none is sent unless `model.temperature` is set; reproducibility comes from
   the cache and the logged ids, not from temperature 0.
+  **Prompt caching (Nov 12):** the system prompt, the same for every hospital, is cached by the provider (Claude: a
+  one-hour `cache_control` on the system block; Kimi: `prompt_cache_breakpoint` plus `prompt_cache_options` explicit
+  mode). It never changes the answers and is not in the response cache key. The ledger logs cache reads and writes at
+  their own prices. `prompt_cache: false` on a model section or preset turns it off. Confirmed live for Sonnet 5.5
+  and Kimi K3.1 (Nov 12, PLAN.md "Prompt caching").
+  **Model comparison (Nov 12):** a third provider `openweight` calls non-Claude Bedrock models (Kimi K3 / K3.1)
+  through InvokeModel (OpenAI-style body, `response_format` json_schema strict) with exactly Claude's prompt and
+  schema. Not the Converse API: there Kimi's format was not enforced on hospital-sized prompts. Named presets in
+  settings.yaml `models:` are picked with `--model NAME` on `ask`, `ping` and `judge`. Every reply is checked against
+  the schema in code (`schema_problems`); a broken one is never used (kept in `data/cache/bad_replies/`), and
+  open-weight calls get one retry. Claude calls stream (output cap 32K; v7 replies passed 16K).
 - **Answers:** YES, NO, N/A, UNCLEAR, NOT_FOUND. YES/NO need a quote that code verifies verbatim
   against extracted text (`verify.py`). Unverified YES/NO is treated as UNCLEAR.
 - **NOT_FOUND is never NO.** A document we failed to collect is not evidence of non-compliance.
@@ -122,21 +134,27 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
 - **Output:** JSON per hospital under `runs/{run_id}/`. `hfal report --run RUN_ID [--run ...]` (`report.py`) turns
   runs into `results/{date}/` and copies them to `results/latest/` (both tracked; see DATA HANDLING): `hospitals.csv`,
   `criteria.csv` (answer, what it means for the letter, the plain-language explanation, the verified quote with
-  document link and page, the law cited), `report.html`, `meta.json`. No model call, no golden labels. A dashboard
+  document link and page, the law cited; for the uniform application and consistency a code-made `evidence_summary`
+  replaces the quote, and a NOT_FOUND summary criterion with a collected web page gets a `for_reviewer` pointer,
+  both Nov 13), `report.html`, `meta.json`. No model call, no golden labels. A dashboard
   reads `results/latest/` and takes the letter from `hospitals.csv`; it never recomputes grades.
 - **Storage:** content-addressed files under `data/raw/{hospital_id}/files/`, dated manifests recording
   status and change detection by hash. Raw data is git-ignored.
 - **Monthly check is a scheduled script, not a Claude skill.** `hfal monitor` (built, `monitor.py`; dev working set
   only) re-runs fetch and discovery, diffs against the last manifest from before today, reports new / changed /
   removed / unreachable / moved documents, and re-runs the model only for hospitals whose extracted text changed
-  (bytes alone do not count). A hospital that becomes blocked, broken or scanned is reported unreachable, not asked.
+  (bytes alone do not count). A hospital that becomes blocked or broken, or posts a scan OCR cannot read, is
+  reported unreachable, not asked. A new scan is OCR'd during the check (Textract, billed per page, cached).
   Scheduled with launchd locally (not set up yet); a server or AWS timer later. Discovery must therefore be
   deterministic. A removed document is reported, never silently dropped.
 - **The state's blank uniform application is in the prompt (v5) and checked in code.** The clean 2025 Word copy is in
   `config/reference/` (text built by `scripts/build_reference_form.py`; the model gets text, never the file) and goes in
   the system prompt after the reading rules. `formcheck.py` measures how much of its wording each hospital document
   contains: 98% overall and no paragraph mostly missing is YES by code (verified quote); a model YES below that
-  becomes UNCLEAR. Settings `form_check`; details in PLAN.md "Form check". Open: whether a newer state version exists. For `2025_fpl_guidelines` the prompt
+  becomes UNCLEAR. **Rule B (Nov 13, owner):** five lines of the form are not compared (`formcheck.MAY_DIFFER`: its
+  three instructions addressed to the hospital and the two uninsured sliding-scale lines, which the form lets a
+  hospital make more generous); the prompt still shows the whole form, so cached replies stay valid. Chosen partly on
+  dev numbers: confirm at the eval checkpoint. Settings `form_check`; details in PLAN.md "Form check". Open: whether a newer state version exists. For `2025_fpl_guidelines` the prompt
   also carries the official 2025 and 2026 poverty figures (`<reference_fpl>`, from `config/reference/fpl.yaml`); the model
   names the matching year, and `fpl.py` recognises the year from the dollar amounts and overrides the model when it is
   clear (PLAN.md "FPL check"). `maxfpl.py` turns a model NO on `max_fpl` into UNCLEAR when the application itself states
@@ -150,7 +168,7 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   sheet does; Languages NO when no other language is named; physician-group documents set aside) is folded into v7
   and not run on its own. v7 (`criteria_overrides_v7.yaml`) is v6 plus consistency point by point: the model reports
   nine points with a quote from each side, `consistency.py` verifies both and combines them in code. **Decided Nov 11:
-  straight to v7** on all 80 dev hospitals, with no v5 baseline on the other 60 and no v6 run, so v7's gain over v5
+  straight to v7** on all dev hospitals (80 then; 82 since OCR and 85 since robots.txt, both Nov 12), with no v5 baseline on the others and no v6 run, so v7's gain over v5
   shows only on the 20 v5 hospitals it was partly written from (not a clean measure; say so). Wording changes go in
   the overrides file, never in a generated `criteria*.yaml`; once a version has been run, bump `prompt_version` with
   each change and add a row to PLAN.md "Prompt versions". `criteria_file` + `prompt_version` in settings.yaml choose
@@ -168,7 +186,8 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
 - **Plain-language explanations** of each criterion are hand-written templates, not LLM-generated:
   `config/explanations.yaml` (draft 1, unreviewed). Each cites and quotes N.Y. Public Health Law § 2807-k(9)/(9-a),
   saved in `config/reference/phl_2807k_9a.txt` (`scripts/build_reference_law.py`; never hand-edited); `explain.py`
-  checks every quote is word for word in the cited part. A `basis` field keeps the text from claiming the law says
+  checks every quote is word for word in the cited part, and `hfal report` stops before writing if that check finds
+  any problem. A `basis` field keeps the text from claiming the law says
   more than it does. The law text is not in the answerer's prompt. `hfal report` attaches them to each result.
 - **Doc types are multi-label** (one PDF can hold policy + summary + application).
 - **`ask` only sees documents in a hospital's latest manifest.** Older files stay on disk (content-addressed)
@@ -186,7 +205,26 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   from the eval hospitals in the working set, once, before any eval aggregate was looked at (tune freely); this
   makes dev 70% of the 114 working hospitals (80 usable) and eval the other 30% (34 usable; aggregate metrics
   only, never tune on them). **The split is frozen** (the draw script refuses to run again). Details and
-  checkpoint rules in PLAN.md.
+  checkpoint rules in PLAN.md. OCR (Nov 12) brought back 9 excluded hospitals into the sets they already had
+  (nothing redrawn): working set 123, dev 82, eval 41. Ignoring robots.txt (Nov 12) brought back 9 more the same
+  way: working set 132, dev 85, eval 47.
+- **OCR with Amazon Textract (decided Nov 12, owner).** This reverses "scans are excluded". `hfal extract` sends only
+  the near-empty pages of PDFs flagged `needs_ocr` to Textract DetectDocumentText (`ocr.py`, settings `ocr`): one page
+  per synchronous call, drawn locally as a PNG, no S3. Pages with their own text layer are never changed. Replies are
+  cached in `data/cache/ocr/` (billed once) and logged in the usage ledger (purpose `ocr`). OCR'd text files carry
+  `ocr` (pages, confidence) and a `+ocr-textract{OCR_VERSION}` stamp. A scan that OCR could not read keeps
+  `needs_ocr` and still excludes its hospital. Changing how replies become text: bump `OCR_VERSION` (re-derived from
+  the cache, no charge).
+- **robots.txt is no longer respected (decided Nov 12, owner), for every hospital.** `fetch.respect_robots: false`.
+  robots.txt is still read: whatever it disallows is fetched anyway and marked (`robots_disallowed: true` on the
+  manifest entry, `robots_txt_ignored` in `data/discovered/{id}.json`, `robots_disallowed` on each document in a run).
+  It is never hidden: `hfal report` has `collected_despite_robots_txt` (hospitals.csv) and
+  `evidence_despite_robots_txt` (criteria.csv) plus a note in report.html, and the attrition table counts the
+  hospitals. Same honest user agent and delay as before. **Bot checks are still not worked around** (no real browser,
+  no disguised user agent), and manual downloads still do not rescue excluded hospitals. Applied by re-running fetch,
+  discover, extract and tag for the 11 hospitals that robots.txt had excluded: 9 joined the working set (3 dev, 6
+  eval), 2 now stop at a bot check. Other hospitals take the setting at their next fetch, which may change what
+  discovery finds for them. Known cost: a hospital disputing its grade can point to it (PLAN.md "Scope rules").
 
 ## Evaluation honesty
 
@@ -202,7 +240,7 @@ be site changes or sheet mistakes. Corrected labels are never used for eval or f
 ## Repo map
 
 `src/hfal/`: `fetch.py` (download; OS trust store via truststore; ingests `data/manual/{hospital_id}/`),
-`discover.py` (keyword crawl from the saved landing page, candidate selection, health-system name filter), `extract.py` (PDF/Word/HTML to per-page text, flags `needs_ocr`),
+`discover.py` (keyword crawl from the saved landing page, candidate selection, health-system name filter), `extract.py` (PDF/Word/HTML to per-page text, flags `needs_ocr`), `ocr.py` (Amazon Textract for scanned pages, called by extract),
 `tag.py` (keyword doc-type rules), `ask.py` (model call + quote verification), `verify.py`, `formcheck.py` (match to the state form), `fpl.py` (which year's poverty figures), `maxfpl.py` (400% statement), `schema.py`,
 `grade.py`, `score.py`, `explain.py` (checks the plain-language templates against the law text), `judge.py` (explains dev disagreements; never decides a match), `consistency.py` (consistency point by point, combined in code; v7 on), `sizecheck.py` (error rate by prompt size, dev only), `doccheck.py` (`doc_not_found` rows and document coverage: finds discovery problems), `attrition.py` (the exclusion
 rule, shared by `scripts/attrition.py` and `monitor.py`), `monitor.py` (monthly check), `report.py` (readable results with explanations), `corrected.py` (corrected labels
@@ -211,14 +249,20 @@ for scoring), `usage.py` (token and cost summary, ledger `runs/usage.csv`, price
 `seed_hospitals.py`, `golden_convert.py`, `check_grader.py`, `review_discovery.py`, `judge_review.py` (merges several
 runs' `judge.csv` into one git-ignored sheet `data/review/judge_review.csv` for hand bucketing, and splits
 `human_bucket` / `human_note` back; adds `hospital_name` from `data/hospitals.csv` for reading),
-`build_corrected_labels.py`). Tests in `tests/` (265 passing with the CSSNY files present; 3 skip without them).
+`build_corrected_labels.py`, `final_run.py` (the final `ask` run in several processes; `runcheck.py` checks every
+hospital's file and rewrites the run-level files)). Tests in `tests/` (356 passing with the CSSNY files present).
 
 Commands: `uv sync`, `uv run pytest`, `uv run hfal fetch|extract|tag|ask|grade|score|report|judge|doc-check|size-check|consistency-check|usage|monitor`.
 
 ## Known gaps (not yet done or never tested)
 
 - `ask.py` has run on the live API for a one-hospital run (v2) and 20 dev hospitals (v5, two random samples of 10:
-  judged, 98 of 119 disagreements hand-bucketed); the full 80 dev hospitals (v7) and the eval set are not asked yet.
+  judged, 98 of 119 disagreements hand-bucketed); v7 with Kimi K3 max on 77 of the 85 dev hospitals (Nov 12-13); the 47 eval hospitals are not asked yet.
+  **Final run (done Nov 13):** Kimi K3 at max (preset `kimi-k3-max`, the pilot's model; changed from
+  K3.1, whose quotes were paraphrased), v7, 40 non-pilot dev hospitals drawn at random, via `scripts/final_run.py`
+  (the headline), plus a fill run of 22 dev hospitals chosen by cost (coverage only, not random): 77 of 85 dev
+  hospitals asked. Opus judge on the 13 hospitals of a 20-row random sample of the 40's disagreements, for hand
+  review (PLAN.md Day 3). The owner's review of the pilot is done (no wording change, so v7 stays).
   `hfal monitor` has not run on the live sites, and no launchd schedule exists. `fetch.py` has run on real sites (eval and dev collected; PLAN.md Attrition).
 - `config/criteria.yaml` and `config/criteria_columns.yaml` are GENERATED (`scripts/criteria_from_csv.py`) from
   `config/criteria_raw.csv` (CSSNY's Excel data dictionary) and `config/criteria_overrides.yaml` (section to
@@ -229,11 +273,11 @@ Commands: `uv sync`, `uv run pytest`, `uv run hfal fetch|extract|tag|ask|grade|s
   their written rubric (194/211 with it); it follows their sheet and CSSNY will not be asked (PLAN.md "Open
   decisions"). Open items count as NO for the letter (`open_items_count_as_no`), which does not affect this check
   (CSSNY's labels have no open items).
-- `scripts/seed_hospitals.py` + `hfal sources` give landing pages; `hfal discover` adds documents. No OCR yet.
-  Hospitals blocked by robots.txt or a bot check, with broken links, no link, or documents that need OCR are
+- `scripts/seed_hospitals.py` + `hfal sources` give landing pages; `hfal discover` adds documents; scanned PDFs are
+  OCR'd with Textract (Nov 12: 12 PDFs, 79 pages). Textract reads English, Spanish, French, German, Italian and
+  Portuguese only. Hospitals blocked by a bot check, with broken links, no link, or scans OCR could not read are
   excluded on purpose, not worked around (PLAN.md "Scope rules"); the working set is `data/working_set.csv`.
-  We respect robots.txt (several document hosts, such as widen.net, disallow all bots), so those hospitals stay
-  excluded and counted.
+  robots.txt no longer excludes anyone (Nov 12, see Decisions): pages it disallows are fetched and marked.
 
 ## Task queue
 

@@ -70,14 +70,26 @@ def tally(ids: list[str], golden: dict, run: dict) -> dict[str, Counter]:
     return out
 
 
-def build(run_id: str, big_tokens: int = DEFAULT_BIG_TOKENS) -> dict:
-    run_dir = paths.RUNS / run_id
-    if not run_dir.is_dir():
-        raise SystemExit(f"{run_dir} not found")
-    run = load_run(run_dir)
+def build(run_ids: str | list[str], big_tokens: int = DEFAULT_BIG_TOKENS) -> dict:
+    """One run, or several pooled (e.g. two samples of 10 asked with the same prompt). A hospital in more than one
+    run counts once, from the newest run (run ids start with a timestamp), as in `hfal report`."""
+    run_ids = [run_ids] if isinstance(run_ids, str) else sorted(run_ids)
     dev = dev_hospitals()
+    run, sizes = {}, {}
+    for run_id in run_ids:
+        run_dir = paths.RUNS / run_id
+        if not run_dir.is_dir():
+            raise SystemExit(f"{run_dir} not found")
+        run.update(load_run(run_dir))
+        sizes.update(prompt_sizes(run_id, dev))
+    if len(run_ids) > 1:
+        kinds = {(d.get("model"), d.get("prompt_version"), (d.get("call") or {}).get("effort")) for r in run_ids
+                 for d in (json.loads(p.read_text(encoding="utf-8")) for p in (paths.RUNS / r).glob("*.json"))
+                 if "answers" in d and "hospital_id" in d}  # final_check.json also has "answers"
+        if len(kinds) > 1:
+            raise SystemExit(f"these runs mix models, prompt versions or efforts ({sorted(map(str, kinds))}); "
+                             "pool only runs asked the same way")
     skipped_eval = sum(1 for h in run if h not in dev)
-    sizes = prompt_sizes(run_id, dev)
     golden = load_golden(paths.GOLDEN / "golden.csv")
     groups = []
     for name, ids in make_groups(sizes, big_tokens):
@@ -96,7 +108,7 @@ def build(run_id: str, big_tokens: int = DEFAULT_BIG_TOKENS) -> dict:
                        "tokens_median": toks[len(toks) // 2] if toks else None, "tokens_max": toks[-1] if toks else None,
                        "total": total, "per_criterion": per,
                        "ci": cluster_ci(by_hospital)})
-    return {"run_id": run_id, "groups": groups, "skipped_eval": skipped_eval,
+    return {"run_id": run_ids[-1], "runs": run_ids, "groups": groups, "skipped_eval": skipped_eval,
             "no_prompt": sum(1 for h in run if h in dev and h not in sizes), "big_tokens": big_tokens}
 
 
@@ -105,7 +117,9 @@ def errors(c: Counter) -> int:
 
 
 def lines(result: dict) -> list[str]:
-    out = [f"Prompt size and error rate, run {result['run_id']} (dev hospitals; judgments against YES/NO golden labels;",
+    runs = result.get("runs", [result["run_id"]])
+    which = f"run {runs[0]}" if len(runs) == 1 else f"{len(runs)} runs pooled ({', '.join(runs)})"
+    out = [f"Prompt size and error rate, {which} (dev hospitals; judgments against YES/NO golden labels;",
            "interval = 95%, resampling whole hospitals)"]
     out.append(f"  {'group':<22} {'hospitals':>9} {'tokens (min/median/max)':>26} {'judgments':>9} {'errors':>7} "
                f"{'error rate (95% interval)':>27} {'false YES':>9} {'false NO':>8} {'flagged':>8}")
@@ -156,7 +170,10 @@ def lines(result: dict) -> list[str]:
 
 
 def write_csv(result: dict) -> str:
-    out = paths.RUNS / result["run_id"] / "size_check.csv"
+    """runs/RUN_ID/size_check.csv; for pooled runs, size_check_pooled.csv in the newest run's folder (the terminal
+    output names the runs)."""
+    runs = result.get("runs", [result["run_id"]])
+    out = paths.RUNS / result["run_id"] / ("size_check.csv" if len(runs) == 1 else "size_check_pooled.csv")
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["group", "criterion", "hospitals", "judgments", "errors", "false_yes", "false_no", "flagged"])

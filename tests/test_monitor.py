@@ -154,7 +154,7 @@ def test_scanned_document_makes_the_hospital_unreachable(store, monkeypatch):
     baseline_month()
     fake_refresh(monkeypatch, [land("aaaaaaaa"), entry(POL, "eeeeeeee")], texts=[("eeeeeeee", "", True)])
     r = monitor.check_hospital(H, TODAY)
-    assert r["status"] == "unreachable" and r["cause"] == "scanned document (needs OCR)"
+    assert r["status"] == "unreachable" and r["cause"] == "scanned document OCR could not read"
 
 
 def test_an_error_puts_the_hospital_back_as_it_was(store, monkeypatch):

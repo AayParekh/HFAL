@@ -26,6 +26,32 @@ def test_unknown_model_has_no_cost_never_a_guess():
     assert usage.cost_usd(info("claude-unknown-9"), PRICES) is None
 
 
+def test_cache_tokens_are_priced_at_the_cache_prices():
+    prices = {"m": {"input": 2.0, "output": 10.0, "cache_read": 0.1, "cache_write": 4.0}}
+    i = {**info("m", i=1_000_000, o=0), "cache_read_tokens": 600_000, "cache_write_tokens": 100_000}
+    assert usage.cost_usd(i, prices) == pytest.approx(0.3 * 2.0 + 0.6 * 0.1 + 0.1 * 4.0)
+
+
+def test_cache_tokens_without_a_cache_price_leave_the_cost_blank():
+    i = {**info(), "cache_read_tokens": 10}
+    assert usage.cost_usd(i, PRICES) is None                       # never priced as plain input
+    assert usage.cost_usd({**info(), "cache_read_tokens": 0}, PRICES) == pytest.approx(3.0)
+
+
+def test_an_old_ledger_gets_the_cache_columns_and_keeps_its_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "RUNS", tmp_path)
+    monkeypatch.setattr(paths, "settings", lambda: {"prices": PRICES})
+    old = ["time_utc", "purpose", "run_id", "hospital_id", "provider", "model", "effort",
+           "input_tokens", "output_tokens", "cost_usd", "status"]
+    (tmp_path / "usage.csv").write_text(",".join(old) + "\n2026-11-10T00:00:00Z,ask,r0,h0,anthropic,"
+                                        "claude-sonnet-5-5,high,100,10,0.000300,ok\n")
+    usage.log_call({**info(i=1000, o=0), "cache_read_tokens": 0}, "ok", {"purpose": "ask"})
+    rows = usage.read_ledger()
+    assert list(rows[0]) == usage.LEDGER_FIELDS and len(rows) == 2
+    assert rows[0]["cost_usd"] == "0.000300" and rows[0]["cache_read_tokens"] == ""     # history unchanged
+    assert rows[1]["cache_read_tokens"] == "0" and rows[1]["purpose"] == "ask"
+
+
 def test_bedrock_needs_its_own_price_key():
     assert usage.cost_usd(info("us.anthropic.x", provider="bedrock"), PRICES) == pytest.approx(3.0 + 1.5)
     assert usage.cost_usd(info("claude-sonnet-5-5", provider="bedrock"), PRICES) is None   # not the Anthropic price
@@ -69,7 +95,7 @@ def test_run_usage_sections_merge(tmp_path, monkeypatch):
 # ---- the ledger, written by call_model --------------------------------------------------------------------
 
 class FakeResp:
-    def __init__(self, text='{"answers": []}', stop_reason="end_turn"):
+    def __init__(self, text='{"answers": [], "languages": [], "psa_counties": []}', stop_reason="end_turn"):
         from types import SimpleNamespace as NS
         self.model, self.stop_reason, self.stop_details = "claude-sonnet-5-5", stop_reason, None
         self.content = [NS(type="text", text=text)]
@@ -80,11 +106,17 @@ class FakeClient:
     def __init__(self, **kw):
         from types import SimpleNamespace as NS
         self.kw, self.calls = kw, 0
-        self.messages = NS(create=self._create)
+        self.messages = NS(create=self._create, stream=self._stream)
 
     def _create(self, **kwargs):
         self.calls += 1
         return FakeResp(**self.kw)
+
+    def _stream(self, **kwargs):          # messages.stream(...): a context manager; get_final_message() is the reply
+        from contextlib import nullcontext
+        from types import SimpleNamespace as NS
+        reply = self._create(**kwargs)
+        return nullcontext(NS(get_final_message=lambda: reply))
 
 
 CFG = {"provider": "anthropic", "name": "claude-sonnet-5-5", "temperature": None, "max_output_tokens": 100}
@@ -137,7 +169,7 @@ def test_a_ledger_that_cannot_be_written_does_not_stop_the_run(env, monkeypatch,
     (env / "runs").mkdir()
     (env / "runs" / "nope").write_text("a file where a folder should be")
     result, _ = ask.call_model("s", "u", CFG)
-    assert result == {"answers": []}
+    assert result == {"answers": [], "languages": [], "psa_counties": []}
     assert "could not write the usage ledger" in capsys.readouterr().err
 
 

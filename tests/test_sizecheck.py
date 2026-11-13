@@ -99,6 +99,25 @@ def test_report_warns_when_groups_are_small_and_hides_ids_and_labels(world, tmp_
     assert "secret-77" not in body and "smallest third,ALL,1,2,1,1,0,0" in body
 
 
+def test_runs_asked_the_same_way_are_pooled_and_others_refused(world, tmp_path):
+    add, finish = world
+    add("d1", 100_000, RIGHT)
+    add("d2", 200_000, ONE_FALSE_YES)                               # also in r2, which is newer: r2's answer counts
+    finish()
+    (tmp_path / "runs" / "r2").mkdir()
+    (tmp_path / "runs" / "r2" / "d2.json").write_text(json.dumps(
+        {"hospital_id": "d2", "prompt_chars": 200_000, "answers": [answer("c1", "YES"), answer("c2", "NO")]}))
+    r = sizecheck.build(["r2", "r1"])
+    assert r["runs"] == ["r1", "r2"] and sum(g["hospitals"] for g in r["groups"]) == 2
+    assert sum(sizecheck.errors(g["total"]) for g in r["groups"]) == 0
+    assert "2 runs pooled" in "\n".join(sizecheck.lines(r))
+    assert sizecheck.write_csv(r).endswith("r2/size_check_pooled.csv")
+    (tmp_path / "runs" / "r2" / "d2.json").write_text(json.dumps(
+        {"hospital_id": "d2", "prompt_chars": 200_000, "call": {"effort": "max"}, "answers": []}))
+    with pytest.raises(SystemExit, match="mix models, prompt versions or efforts"):
+        sizecheck.build(["r1", "r2"])
+
+
 def test_the_size_effect_message_needs_non_overlapping_intervals(world):
     add, finish = world
     for i in range(40):                                              # 40 clean small prompts

@@ -10,8 +10,9 @@ model:
                                # AWS_BEARER_TOKEN_BEDROCK, or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
   temperature: null            # not sent unless set: the SDK has no temperature argument (sent via extra_body if set;
                                # the API may reject it for some models). Reproducibility = response cache + logged ids.
-  # Thinking tokens count toward max_output_tokens, so leave room: the answers are about 3-4k tokens.
-  max_output_tokens: 16000
+  # Thinking tokens count toward max_output_tokens, so leave room. v5 used about 8K; the first v7 call (Nov 12) hit
+  # 16K, so 32K. Calls above about 21K have to stream (the SDK's rule); ask.py streams every Claude call.
+  max_output_tokens: 32000
   # How hard the model thinks (low | medium | high | xhigh | max). high is claude-sonnet-5-5's own default, written
   # out so it is logged and part of the cache key. Accuracy beats cost here; try medium on dev only with evidence.
   effort: high
@@ -28,13 +29,90 @@ judge:
   max_output_tokens: 16000
   effort: high
 
+# Model presets, for comparing models without editing the sections above: `hfal ask --model NAME`, `hfal ping --model
+# NAME` and `hfal judge --model NAME` use models.NAME in place of `model:` (ask, ping) or `judge:` (judge) for that one
+# command. Each run records its provider and model, and its run_id names them.
+#   openweight a non-Claude (open-weight) model on Amazon Bedrock through InvokeModel (ask.py). bedrock_id is the
+#              inference profile ID. Only us.* profiles work for this account's role (global.* is denied; Nov 12).
+# Kimi on Bedrock (tested Nov 12): through the Converse API the JSON-schema reply format was not enforced on
+# hospital-sized prompts (fields renamed or dropped, JSON in a code fence: 5 of 5 real replies). Through InvokeModel
+# with response_format strict it was (largest test hospital, both models), so ask.py uses InvokeModel. Every reply is
+# still checked in code, with one retry; nothing broken is used. `effort` is sent as reasoning_effort (the model
+# card's field; Kimi's default is max). 1M-token context window on both model cards. Bedrock's kimi-k3.1 is "K3.1 Pro Highspeed".
+# Rate limits could not be read (the role may not list quotas). Kimi's reasoning counts as output: 8-17K tokens per
+# hospital at high, 24-30K at max (K3 at max used 29.6K on a mid-sized hospital, Nov 12), so the Kimi presets allow
+# 64K: twice the most seen, half the 128K that third-party listings give for K3 on Bedrock (AWS's own card not
+# checked). Not part of the cache key, so cached answers stay valid. A hospital that still hits it is recorded in
+# runs/RUN_ID/failed.json and the batch carries on (ask.py iter_ask).
+models:
+  sonnet-5-5:
+    provider: anthropic
+    name: claude-sonnet-5-5
+    temperature: null
+    max_output_tokens: 32000
+    effort: high
+  opus-5-5:
+    provider: anthropic
+    name: claude-opus-5-5
+    temperature: null
+    max_output_tokens: 32000
+    effort: high
+  kimi-k3:
+    provider: openweight
+    context_window_tokens: 1000000   # same as claude-sonnet-5-5 (owner, Nov 12)
+    bedrock_id: us.moonshotai.kimi-k3
+    aws_region: us-east-1
+    aws_profile: hackathon
+    temperature: null
+    max_output_tokens: 64000
+    effort: high
+  kimi-k3.1:
+    provider: openweight
+    context_window_tokens: 1000000   # same as claude-sonnet-5-5 (owner, Nov 12)
+    bedrock_id: us.moonshotai.kimi-k3.1
+    aws_region: us-east-1
+    aws_profile: hackathon
+    temperature: null
+    max_output_tokens: 64000
+    effort: high
+  kimi-k3-max:                 # Kimi's own default thinking level (see kimi-k3.1-max)
+    provider: openweight
+    context_window_tokens: 1000000   # same as claude-sonnet-5-5 (owner, Nov 12)
+    bedrock_id: us.moonshotai.kimi-k3
+    aws_region: us-east-1
+    aws_profile: hackathon
+    temperature: null
+    max_output_tokens: 64000    # K3 at max wrote 29.6K on one hospital (Nov 12); a capped reply fails, still billed
+    effort: max
+  # Kimi's own default thinking level. At high, K3.1 wrote half the tokens and copied 2 of 17 quotes word for word on
+  # one test hospital; its earlier replies at max copied 43-73% (Nov 12). The run_id does not name the effort; the
+  # run's call info and the ledger do.
+  kimi-k3.1-max:
+    provider: openweight
+    context_window_tokens: 1000000   # same as claude-sonnet-5-5 (owner, Nov 12)
+    bedrock_id: us.moonshotai.kimi-k3.1
+    aws_region: us-east-1
+    aws_profile: hackathon
+    temperature: null
+    max_output_tokens: 64000    # K3 at max wrote 29.6K on one hospital (Nov 12); a capped reply fails, still billed
+    effort: max
+
 # Prices in US dollars per million tokens, for the cost in the usage summary and ledger (src/hfal/usage.py). Anthropic
 # API list prices (Nov 2026; check https://www.anthropic.com/pricing when they change). A model not listed here is
-# counted in tokens with its cost left blank. Amazon Bedrock is priced separately: add a key "bedrock/<bedrock_id>".
-# Prompt caching is not used, so there is no cache-read price.
+# counted in tokens with its cost left blank. Amazon Bedrock is priced separately: add a key "<provider>/<bedrock_id>"
+# (provider bedrock or openweight).
+# Prompt caching (Nov 12, on for every model unless a model section or preset says `prompt_cache: false`): the system
+# prompt, the same for every hospital, is cached by the provider and read back on later calls. cache_read is the price
+# of an input token read from the cache, cache_write of one written to it. Claude uses the one-hour cache: write = 2x
+# input, read = 0.05x (Sonnet 5.5 $0.10, Opus 5.5 $0.20). Kimi: the Bedrock model cards' "Cache read" and "Cache write
+# (30 min)" columns, US CRIS. A call that used the cache on a model with no cache price has its cost left blank.
+# Kimi: us-east-1 on-demand prices of the us.* profiles. K3 from AWS's model card (Nov 12). K3.1: the Bedrock model
+# card "Kimi K3.1 Pro - Highspeed", US CRIS (Nov 12).
 prices:
-  claude-sonnet-5-5: {input: 2.00, output: 10.00}
-  claude-opus-5-5: {input: 4.00, output: 20.00}
+  claude-sonnet-5-5: {input: 2.00, output: 10.00, cache_read: 0.10, cache_write: 4.00}
+  claude-opus-5-5: {input: 4.00, output: 20.00, cache_read: 0.20, cache_write: 8.00}
+  openweight/us.moonshotai.kimi-k3: {input: 3.30, output: 16.50, cache_read: 0.33, cache_write: 4.125}
+  openweight/us.moonshotai.kimi-k3.1: {input: 4.40, output: 22.00, cache_read: 0.22, cache_write: 5.50}
 
 # v5 (criteria_overrides.yaml -> criteria.yaml): the rubric (checks, notes and reading rules), the reported lists
 # (languages, PSA counties), the 2007 PSA rule, the state's blank uniform application in the system prompt
@@ -54,21 +132,44 @@ criteria_file: criteria_v7.yaml
 # lists it in runs/RUN_ID/skipped.json, and attrition counts it as "too large for one call". The rest of the
 # batch carries on.
 #   context_window_tokens  claude-sonnet-5-5 has a 1,000,000-token window (Anthropic's model table, Nov 2026).
-#                          Change it with the model; check the Models API field max_input_tokens when you have a
-#                          key. Amazon Bedrock may serve a different window: check the console.
+#                          This is the default. A model section or a preset under `models:` can set its own
+#                          context_window_tokens, which wins for that model (the judge uses the `judge` section's).
+#                          Every non-Claude preset must set it: its window is not Claude's. Check the Models API field
+#                          max_input_tokens, or the Bedrock console for Bedrock models.
 #   max_input_share        0.80 leaves room for the answer (up to max_output_tokens) and for token-count error.
-#   chars_per_token        the guard assumes 3 characters per token, below the usual 4 for English prose, so the
-#                          estimate errs high (tables, numbers and forms use more tokens per character).
+#   chars_per_token        2.3, measured on real prompts (Nov 10: the 10-hospital sample's billed input tokens).
+#                          It was 3 until Nov 12, which counted about a quarter too few tokens. Tables, numbers and
+#                          forms use more tokens per character than prose, and other models' tokenizers may differ.
 # This is a safety limit, not a quality limit: research finds accuracy can fall long before the window is full
 # (PLAN.md, "Long-context checks"). Quality is measured with the prompt-size analysis, not assumed.
 context_window_tokens: 1000000
 max_input_share: 0.80
-chars_per_token: 3
+chars_per_token: 2.3
+
+# OCR for scanned PDFs (src/hfal/ocr.py), run by `hfal extract` (and so by `hfal monitor`). Only pages with almost no
+# text of their own, in PDFs flagged needs_ocr, are sent to Amazon Textract (DetectDocumentText, one page per call,
+# no S3). Replies are cached in data/cache/ocr/, so a page is billed once; each billed page is a ledger row.
+#   enabled         false: scanned documents keep needs_ocr and their hospitals stay excluded, as before (Nov 12).
+#                   Switching it off also redoes already OCR'd files without OCR.
+#   aws_profile     a named profile (e.g. SSO; sign in with `aws sso login --profile NAME`), or null for env vars.
+#                   The role needs textract:DetectDocumentText.
+#   dpi             resolution each page is drawn at before it is sent (lower automatically if over 10 MB).
+#   price_per_page  US dollars, for the ledger: $1.50 per 1,000 pages (us-east-1 list price, first million pages a
+#                   month; check https://aws.amazon.com/textract/pricing/).
+ocr:
+  enabled: true
+  aws_region: us-east-1
+  aws_profile: hackathon
+  dpi: 300
+  price_per_page: 0.0015
 
 fetch:
   delay_seconds: 1.5
   timeout_seconds: 30
-  respect_robots: true
+  # false since Nov 12 (owner's decision): robots.txt is still read, but a disallowed page or document is fetched
+  # anyway and marked robots_disallowed in the manifest, so attrition and `hfal report` say which ones. Bot checks
+  # (401/403/429) are still not worked around. true: a disallowed URL is not fetched and excludes the hospital.
+  respect_robots: false
 
 # The form check (src/hfal/formcheck.py), for the criterion entire_uniform_application. Code measures how much of
 # the state form's wording a hospital document contains (4-word windows; the poverty table's figures are ignored).

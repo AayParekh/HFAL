@@ -431,10 +431,13 @@ def discover_all(only: set[str] | None = None) -> None:
         print("note: data/hospitals.csv missing; health-system name filter is off")
     with make_client(cfg["timeout_seconds"]) as client:
         robots = Robots(client)
+        ignored: list[str] = []     # pages fetched although robots.txt disallows them (respect_robots: false)
 
         def get(url):
-            if cfg["respect_robots"] and not robots.allowed(url):
-                return "robots_disallowed", "", b""
+            if not robots.allowed(url):
+                if cfg["respect_robots"]:
+                    return "robots_disallowed", "", b""
+                ignored.append(url)
             time.sleep(cfg["delay_seconds"])
             try:
                 r = client.get(url)
@@ -445,6 +448,7 @@ def discover_all(only: set[str] | None = None) -> None:
         for hid, landings in sorted(_landing_rows(only).items()):
             merged = {"pages": [], "candidates": []}
             warnings = []
+            ignored.clear()
             for landing in landings:
                 saved = _saved_landing(hid, landing)
                 if saved is not None and not page_links(saved, landing):
@@ -458,6 +462,7 @@ def discover_all(only: set[str] | None = None) -> None:
                 merged["candidates"] += c["candidates"]
             res = select(merged, landings[0], name_filter(hid, hospitals))
             res.update(hospital_id=hid, landing=landings, warnings=warnings,
+                       robots_txt_ignored=sorted(set(ignored)),
                        discovered_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
             (out_dir / f"{hid}.json").write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
             results[hid] = res

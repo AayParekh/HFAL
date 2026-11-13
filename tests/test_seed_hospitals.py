@@ -63,3 +63,17 @@ def test_sample_header_row_is_found_after_preamble(tmp_path):
     p = tmp_path / "sample.csv"
     write(p, [["A long note"], [], ["Hospital", "Wave", "PFI"], ["x", "1", "10"], ["y", "2", "11.0"]])
     assert sh.read_sample_ids(p) == {"10", "11"}
+
+
+def test_address_and_zip_are_read_when_present_and_filled_once_into_an_old_table(tmp_path):
+    p = tmp_path / "golden.csv"
+    write(p, [["GROUP"] + [""] * 6,
+              ["Hospital Name", sh.COLS["hospital_id"], "HFA Link", "Address", "City", "Zip", "System"],
+              ["One", "1", "one.org", "1 Main St", "Albany", "1234.0", ""]])
+    g = sh.read_golden(p, Counter())
+    assert g[0]["address"] == "1 Main St" and g[0]["zip"] == "01234"
+    old = [{"hospital_id": "1", "name": "One", "city": "Albany", "system": "", "set": "dev",
+            "landing_url": "https://one.org/fixed", "url_source": "fixed by hand", "verified_at": "", "note": ""}]
+    rows, _ = sh.seed(old, [f for f in sh.FIELDS if f not in ("address", "zip")], g, None)
+    assert rows[0]["address"] == "1 Main St" and rows[0]["zip"] == "01234"
+    assert rows[0]["landing_url"] == "https://one.org/fixed" and rows[0]["set"] == "dev"   # hand edits kept

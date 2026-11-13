@@ -1,0 +1,16 @@
+{
+  "generated_on": "2026-11-13",
+  "runs": [
+    "20261113T045436Z_openweight_us-moonshotai-kimi-k3_v7"
+  ],
+  "prompt_versions": [
+    "v7"
+  ],
+  "models": [
+    "us.moonshotai.kimi-k3"
+  ],
+  "open_items_count_as_no": true,
+  "explanations_version": "draft-1",
+  "hospitals": 40,
+  "hospitals_collected_despite_robots_txt": 3
+}

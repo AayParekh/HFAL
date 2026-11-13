@@ -116,6 +116,10 @@ def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None, lan
     name), sha256 (full hash), ext, bytes, change (new | changed | unchanged vs the last time this URL was
     seen), plus for downloads http_status, final_url (after redirects), content_type, last_modified.
 
+    robots.txt is always read. With fetch.respect_robots true a disallowed URL is not downloaded (status
+    robots_disallowed); with it false (the setting since Nov 12) it is downloaded and the entry carries
+    robots_disallowed: true, so attrition and `hfal report` can say which documents were collected that way.
+
     landing_only: fetch only the landing-page rows (no documents, no manual files). `hfal monitor` uses it to
     refresh the page discovery starts from; the full fetch that follows replaces that day's manifest.
     """
@@ -150,9 +154,12 @@ def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None, lan
                     "label": item.get("label", ""),
                     "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 }
-                if cfg["respect_robots"] and not robots.allowed(url):
+                disallowed = not robots.allowed(url)
+                if disallowed and cfg["respect_robots"]:
                     entry["status"] = "robots_disallowed"
                 else:
+                    if disallowed:      # fetched anyway (respect_robots: false, decided Nov 12); reports say so
+                        entry["robots_disallowed"] = True
                     try:
                         r = client.get(url)
                         entry["http_status"] = r.status_code

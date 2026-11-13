@@ -17,7 +17,7 @@ whose text did not (a landing page with a new session token, a PDF saved again),
 is listed but does not lead to a new model call. Text is compared with runs of whitespace collapsed.
 
 Unreachable. A hospital that no longer passes the exclusion rule (landing page or a selected document blocked,
-broken or gone, or a scan that needs OCR; src/hfal/attrition.py) is reported as unreachable with its cause, and
+broken or gone, or a scan OCR could not read; src/hfal/attrition.py) is reported as unreachable with its cause, and
 whether it passed at the baseline ("newly"). It is not asked. It stays in the working set until
 scripts/attrition.py is rerun: a person decides.
 

@@ -16,7 +16,7 @@ data/hospitals.csv -> sources -> fetch -> discover -> fetch -> extract -> tag ->
 | sources | `uv run hfal sources --set dev\|eval\|all` | `data/hospitals.csv` | landing-page rows of `data/sources.csv` |
 | fetch | `uv run hfal fetch` | `data/sources.csv` | `data/raw/{hospital_id}/files/`, `.../{date}/manifest.json` |
 | discover | `uv run hfal discover` | saved landing pages + live links | `data/discovered/{hospital_id}.json`, `discovered` rows in `data/sources.csv` |
-| extract | `uv run hfal extract` | raw files | `data/text/{hospital_id}/{sha8}.json` |
+| extract | `uv run hfal extract` (OCRs scanned PDFs with Amazon Textract; see "OCR for scanned PDFs") | raw files | `data/text/{hospital_id}/{sha8}.json`, `data/cache/ocr/` |
 | tag | `uv run hfal tag` | text + manifests | `data/tags/{hospital_id}.json` |
 | attrition | `uv run python scripts/attrition.py` | manifests, discovery records | `data/attrition.csv`, `data/working_set.csv` (the hospitals `ask` runs on) |
 | ask | `uv run hfal ask` | text, tags, `config/criteria.yaml` | `runs/{run_id}/{hospital_id}.json` |
@@ -50,7 +50,9 @@ Then `fetch` the landing pages and run `discover`, which starts from the saved l
 keyworded links up to 2 clicks, keeps the English version of translated documents (recording the languages
 seen), scores the rest by keywords and writes rows labelled `discovered pdf|docx|html`. Every candidate and the
 reason it was or was not selected is in `data/discovered/{hospital_id}.json`. Run `fetch` again to download
-them. PDF and Word (.docx) files are extracted; links blocked by robots.txt are recorded, not fetched.
+them. PDF and Word (.docx) files are extracted. Since Nov 12 robots.txt is read but not obeyed
+(`fetch.respect_robots: false`): links it disallows are fetched and marked `robots_disallowed`, and `hfal report`
+says which hospitals and quotes come from them.
 
 ## Golden set
 
@@ -65,7 +67,8 @@ uv run python scripts/check_grader.py     # does grade.py reproduce CSSNY's lett
 
 Dev set = the 27 sample hospitals plus 67 more drawn at random (seed 20261110) from the eval hospitals that pass
 the exclusion rules, so that dev is 70% of the 114 working hospitals (80 usable); eval set = the rest (34
-usable). The split is frozen. See [PLAN.md](PLAN.md) "Data split" for the rules.
+usable). The split is frozen. OCR (Nov 12) brought back 9 scanned-document hospitals into their existing sets: 82
+dev, 41 eval. No longer respecting robots.txt (Nov 12) brought back 9 more the same way: 85 dev, 47 eval. See [PLAN.md](PLAN.md) "Data split" for the rules.
 
 ## Reviewing discovery
 
@@ -86,8 +89,8 @@ every member hospital. The script will not overwrite a sheet that exists (`--for
 ## Manual downloads
 
 For a file you already have, such as a document you were sent or an older version: drop it into
-`data/manual/{hospital_id}/` (PDF, .docx or .html). It is not used to rescue hospitals that robots.txt, a bot
-check, a broken link or a scan excludes (PLAN.md "Scope rules"). The next `uv run hfal fetch` stores it like any other
+`data/manual/{hospital_id}/` (PDF, .docx or .html). It is not used to rescue hospitals that a bot
+check, a broken link or a scan OCR could not read excludes (PLAN.md "Scope rules"). The next `uv run hfal fetch` stores it like any other
 download (URL recorded as `manual:{file name}`, label `manual`), and `extract`/`ask` pick it up. Replacing a
 file with a new version shows up as `change: changed`. The folder is git-ignored.
 
@@ -169,6 +172,7 @@ tracked files (docs, tests, config): use counts, or invented ids in test fixture
 uv sync
 export ANTHROPIC_API_KEY=...        # needed for `ask` with provider: anthropic (see "Model providers" for Bedrock)
 export HFAL_CONTACT=you@example.org # optional, added to the fetch User-Agent
+aws sso login --profile hackathon   # for OCR of scanned PDFs in `extract` (settings.yaml `ocr`; see "OCR for scanned PDFs")
 uv run pytest
 ```
 
@@ -191,7 +195,9 @@ results/{YYYY-MM-DD}/, results/latest/              `hfal report` output (TRACKE
 data/monitor/{YYYY-MM-DD}/                          `hfal monitor` change report
 data/text/{hospital_id}/{sha8}.json                 extracted pages (+ needs_ocr flag, + extractor stamp: the
                                                     extractor version and the PDF / HTML library versions; `hfal
-                                                    extract` redoes any file whose stamp is not the current one)
+                                                    extract` redoes any file whose stamp is not the current one;
+                                                    + `ocr` when pages were OCR'd)
+data/cache/ocr/{hospital_id}/                       Textract replies, one per page (paid for: keep them)
 data/tags/{hospital_id}.json                        doc-type labels per file
 runs/{run_id}/                                      model output; run_id = timestamp_model_promptversion
 ```
@@ -201,7 +207,35 @@ Change detection is by hash (SHA-256, taken at download). A same-day rerun repla
 `change` field then compares with the earlier fetch of the same day; `hfal monitor` does not use that field (it
 compares with the last manifest from before today).
 `data/raw`, `data/text`, `data/cache`, `data/discovered`, `data/manual` and `data/hospitals.csv` are gitignored;
-sync `data/` to S3 with `aws s3 sync data/ s3://BUCKET/data/ --exclude "cache/*"`.
+sync `data/` to S3 with `aws s3 sync data/ s3://BUCKET/data/ --exclude "cache/*" --include "cache/ocr/*"` (the OCR
+replies were paid for; the rest of the cache is model replies, rebuilt by re-running).
+
+## OCR for scanned PDFs
+
+Some hospitals post scanned PDFs, which are pictures of pages with no text. `hfal extract` flags a PDF `needs_ocr`
+when it has under 50 characters per page on average. With `ocr.enabled: true` in `config/settings.yaml`, each page of
+that PDF with under 50 characters of its own is drawn as a grayscale PNG on this computer and sent to Amazon Textract
+(DetectDocumentText, one page per call, no S3 bucket). Pages that already have text are not touched. The text file
+then records `ocr: {pages, mean_line_confidence, dpi, version}`.
+
+```bash
+aws sso login --profile hackathon        # or whatever ocr.aws_profile names; the role needs textract:DetectDocumentText
+uv run hfal extract                      # OCRs only scans not yet done; other files are left alone
+uv run hfal tag                          # doc types for the new text
+uv run python scripts/attrition.py --update-plan   # scans that now have text pass the exclusion rule
+```
+
+- **Cost.** About $1.50 per 1,000 pages. Each reply is cached in `data/cache/ocr/`, so a page is billed once. Each
+  billed page is a ledger row with purpose `ocr` (`hfal usage`). The first run (Nov 12) read 79 pages for $0.12.
+- **Failures.** If credentials are missing or expired, OCR stops for the rest of the run. Each scan it skipped
+  keeps `needs_ocr`, so its hospital stays excluded, and the next `hfal extract` tries again. A message says what
+  to do.
+- **Limits.** Textract reads English, Spanish, French, German, Italian and Portuguese. OCR can misread characters.
+  The model gets the OCR text and quotes are checked against that same text, so verification still works. A misread
+  figure fails the form or FPL check toward UNCLEAR, never toward a YES made by code. `ask` records `ocr` for each
+  document it sends.
+- **Off switch.** With `ocr.enabled: false`, OCR'd files are extracted again without OCR and their hospitals drop
+  out again.
 
 ## Tokens and cost
 
@@ -210,12 +244,13 @@ output tokens, dollars. It is also saved as `runs/RUN_ID/usage.json`. Every call
 the ledger `runs/usage.csv` (git-ignored), including calls that were billed and then failed. To add them up:
 
 ```bash
-uv run hfal usage                          # by purpose (ask / judge / ping), with a total
+uv run hfal usage                          # by purpose (ask / judge / ping / ocr), with a total
 uv run hfal usage --by day --since 2026-11-10
 uv run hfal usage --by run                 # what each run cost
 uv run hfal usage --run RUN_ID
 ```
 
+OCR pages are ledger rows too (purpose `ocr`, one per page sent to Textract, no tokens, priced by `ocr.price_per_page`).
 Prices are in `config/settings.yaml` (`prices`, dollars per million tokens). Update them when Anthropic's prices change; a
 model with no price is counted in tokens and its cost left blank. The ledger starts on Nov 10, 2026.
 
@@ -312,7 +347,11 @@ git add results && git commit -m "Results from RUN_ID"  # share it through the p
 
 No model call and no golden labels. A hospital found in several runs is reported from the newest. `results/` is the
 one tracked folder that names hospitals (CLAUDE.md, DATA HANDLING): it holds only our own results, never CSSNY's
-labels or the review data. `--out DIR` writes somewhere else instead (and leaves `latest/` alone). Files:
+labels or the review data. `--out DIR` writes somewhere else instead (and leaves `latest/` alone).
+
+Before writing anything, `report` checks the explanations (`explain.check`): every law quote must be word for word in
+the part of PHL § 2807-k it cites, every template needs all its fields, and there must be one template per criterion.
+Any problem stops the report and lists what to fix in `config/explanations.yaml`. Files:
 
 - `hospitals.csv`: one row per hospital: letter, status (`graded` / `provisional`), errors counted for the letter,
   confirmed errors, open items, automatic F, what was not met, what is open, languages, service-area counties, link.
@@ -335,8 +374,8 @@ uv run hfal monitor --hospital ID --no-ask
 ```
 
 Dev hospitals of the working set only (eval documents stay as collected for the eval checkpoints). For each hospital,
-one at a time: fetch the landing page again, rerun discovery from it, fetch the selected documents, extract, tag
-(the same code as the separate commands), then compare with the hospital's **last manifest from before today**.
+one at a time: fetch the landing page again, rerun discovery from it, fetch the selected documents, extract (which
+OCRs any new scanned PDF: Textract, billed per page, cached), tag (the same code as the separate commands), then compare with the hospital's **last manifest from before today**.
 
 - **Document changes** (`changes.csv`): `new`, `changed` (text changed), `removed` (no longer listed),
   `unreachable` (downloaded last time, not now), `new_unreachable`, `moved` (same file, new address), `same_text`
@@ -344,7 +383,7 @@ one at a time: fetch the landing page again, rerun discovery from it, fetch the 
 - **Hospital status** (`hospitals.csv`): `changed` when the texts the model would read differ from last time (a new,
   removed or rewritten document). Bytes alone do not count: landing pages change bytes on every visit (session tokens,
   dates), so `same_text` and `moved` do not cost a model call. `unreachable` when the hospital no longer passes the
-  exclusion rule (blocked, broken, gone, or a scan), with the cause and `newly_unreachable`; it is not asked and stays
+  exclusion rule (blocked, broken, gone, or a scan OCR could not read), with the cause and `newly_unreachable`; it is not asked and stays
   in the working set until you rerun `scripts/attrition.py`. `error` when a step failed: that hospital's manifest,
   discovery record and `sources.csv` rows are put back as they were, and the rest carry on.
 - **Answers.** Without `--no-ask`, the `changed` hospitals are asked in a new run (`runs/RUN_ID/`, with
@@ -411,9 +450,10 @@ themselves are never changed. Set the option to `false` to go back to "no letter
   no policy statement is not an automatic F; service areas covering all of New York State or New York City pass).
   Say so in the write-up. The automatic-fail ids in `config/rubric.yaml` must match criterion ids.
 - Language and service-area criteria likely need non-LLM outside data (Census, county lists, the 2007 DOH chart).
-- Scanned PDFs are flagged `needs_ocr` but OCR is not wired in (deferred).
-- `ask` has run on 20 dev hospitals (prompt v5, two random samples of 10), not yet on the full 80 dev or the 34 eval
-  hospitals. The next paid run is v7. `uv run hfal ask --dry-run --hospital ID` shows the prompt size without calling
+- Scanned PDFs are OCR'd with Amazon Textract (Nov 12, "OCR for scanned PDFs"). Open: whether the one page with
+  confidence under 90 needs a person to look at it.
+- `ask` has run on 20 dev hospitals (prompt v5, two random samples of 10), not yet on the full 85 dev or the 47 eval
+  hospitals (80 and 34 before OCR and robots.txt, Nov 12). The next paid run is v7. `uv run hfal ask --dry-run --hospital ID` shows the prompt size without calling
   the model.
 - September 2025 copies of the documents CSSNY reviewed are not available from CSSNY. Corrected labels stand in
   (see "Hand review and corrected labels"); the Internet Archive is the remaining source.
