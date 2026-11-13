@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { FacilityRow } from '@/lib/facility-rows'
+import { applyPublishedGrade, getPublishedReportStatus } from '@/lib/facility-rows'
 import { formatDate } from '@/lib/format'
 import { gradeFacility } from '@/lib/grading'
 import { FacilityDetailBody } from './facility-detail-body'
@@ -27,19 +28,24 @@ export function FacilitySheet({ pfi, row, onClose, onCloseAutoFocus }: FacilityS
   const criteria = criteriaQuery.data
   const error = detailQuery.error ?? criteriaQuery.error
 
-  // The panel uses the computed grade (never a stored one).
   const grade = useMemo(
-    () => row?.grade ?? (detail && criteria ? gradeFacility(criteria, detail.assessments) : null),
+    () => row?.grade ?? (
+      detail && criteria
+        ? applyPublishedGrade(gradeFacility(criteria, detail.assessments), detail.stored_grade)
+        : null
+    ),
     [row, detail, criteria],
   )
 
   const facility = detail?.facility
   const title = row?.name ?? facility?.name ?? (detailQuery.isError ? 'Hospital not found' : 'Loading hospital…')
-  const address = row
-    ? `${row.address}, ${row.city}, NY ${row.zip}`
+  const addressParts = row
+    ? [row.address, row.city, row.state, row.zip].filter(Boolean)
     : facility
-      ? `${facility.address}, ${facility.city}, NY ${facility.zip}`
-      : 'Compliance details for this hospital'
+      ? [facility.address, facility.city, facility.state, facility.zip].filter(Boolean)
+      : []
+  const address = addressParts.length ? addressParts.join(', ') : 'Location not provided in report'
+  const publishedReport = row?.publishedReport ?? getPublishedReportStatus(detail?.stored_grade ?? null)
   const faPageUrl = row?.faPageUrl ?? detail?.package.landing_url ?? null
   const lastRetrieved =
     row?.lastRetrievedAt ??
@@ -82,7 +88,7 @@ export function FacilitySheet({ pfi, row, onClose, onCloseAutoFocus }: FacilityS
               </AlertDescription>
             </Alert>
           ) : detail && criteria && grade ? (
-            <FacilityDetailBody detail={detail} criteria={criteria} grade={grade} />
+            <FacilityDetailBody detail={detail} criteria={criteria} grade={grade} publishedReport={publishedReport} />
           ) : (
             <div className="space-y-4">
               <Skeleton className="h-5 w-2/3" />

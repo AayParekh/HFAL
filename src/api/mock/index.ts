@@ -9,8 +9,7 @@ import {
 } from '@/types'
 import type { ApiClient } from '../client'
 import { ApiError } from '../errors'
-import generatedJson from './data/generated.json'
-import { BASSETT } from './fixtures/bassett'
+import reportJson from './data/report.json'
 
 /**
  * Mock implementation of ApiClient. Every response is parsed with the zod schemas, so drift between
@@ -20,28 +19,13 @@ import { BASSETT } from './fixtures/bassett'
  *   ?pfi=unknown -> getFacilityDetail returns a 404 (shows the panel error state)
  */
 
-const AS_OF = '2026-11-01'
+const AS_OF = '2026-11-11'
 
 let cache: Dataset | null = null
 
 function loadDataset(): Dataset {
   if (cache) return cache
-  const generated = DatasetSchema.parse(generatedJson)
-  const bassett = DatasetSchema.parse(BASSETT)
-  if (generated.audit_round !== bassett.audit_round) throw new Error('Mock datasets disagree on audit_round')
-  cache = {
-    audit_round: generated.audit_round,
-    rubric_version: generated.rubric_version,
-    criteria: generated.criteria,
-    systems: [...bassett.systems, ...generated.systems],
-    operators: [...bassett.operators, ...generated.operators],
-    facilities: [...bassett.facilities, ...generated.facilities],
-    packages: [...bassett.packages, ...generated.packages],
-    documents: [...bassett.documents, ...generated.documents],
-    facility_psa: [...bassett.facility_psa, ...generated.facility_psa],
-    assessments: [...bassett.assessments, ...generated.assessments],
-    grade_results: [...bassett.grade_results, ...generated.grade_results],
-  }
+  cache = DatasetSchema.parse(reportJson)
   return cache
 }
 

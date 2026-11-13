@@ -21,4 +21,5 @@ export const CRITERIA: Criterion[] = [
   { code: 'pls_psa_described', section: 'pls', evaluates: 'document', value_type: 'boolean', rule: 'PSA described in summary', is_auto_fail: false },
   { code: 'pls_means_of_applying', section: 'pls', evaluates: 'document', value_type: 'boolean', rule: 'means of applying explained', is_auto_fail: false },
   { code: 'pls_income_levels', section: 'pls', evaluates: 'document', value_type: 'boolean', rule: 'income levels used to determine assistance stated', is_auto_fail: false },
+  { code: 'application_languages', section: 'application', evaluates: 'document', value_type: 'boolean', rule: 'Supplemental report outcome; not included in the published grade', is_auto_fail: false, excluded_from_grade: true },
 ]

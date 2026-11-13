@@ -32,6 +32,7 @@ export function gradeForErrorCount(errorCount: number): Grade {
 export interface GradingCriterion {
   code: string
   is_auto_fail: boolean
+  excluded_from_grade?: boolean
 }
 
 export interface GradingAssessment {
@@ -52,6 +53,7 @@ export function gradeFacility(
   criteria: readonly GradingCriterion[],
   assessments: readonly GradingAssessment[],
 ): FacilityGrade {
+  const gradeableCriteria = criteria.filter((criterion) => !criterion.excluded_from_grade)
   const known = new Set(criteria.map((c) => c.code))
   const worst = new Map<string, AssessmentResult>()
   for (const a of assessments) {
@@ -68,7 +70,7 @@ export function gradeFacility(
   const unresolved: string[] = []
   let passed = 0
   let notApplicable = 0
-  for (const c of criteria) {
+  for (const c of gradeableCriteria) {
     const result = worst.get(c.code)
     if (result === undefined || result === 'needs_review') unresolved.push(c.code)
     else if (result === 'fail') failed.push(c.code)
@@ -77,7 +79,7 @@ export function gradeFacility(
   }
 
   const autoFailReasons = criteria
-    .filter((c) => c.is_auto_fail && worst.get(c.code) === 'fail')
+    .filter((c) => !c.excluded_from_grade && c.is_auto_fail && worst.get(c.code) === 'fail')
     .map((c) => c.code)
   const errorBand = gradeForErrorCount(failed.length)
 
@@ -87,7 +89,7 @@ export function gradeFacility(
     error_count: failed.length,
     assessed_count: passed + failed.length,
     not_applicable_count: notApplicable,
-    criteria_total: criteria.length,
+    criteria_total: gradeableCriteria.length,
     failed_criteria: failed,
     auto_fail: autoFailReasons.length > 0,
     auto_fail_reasons: autoFailReasons,

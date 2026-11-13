@@ -1,28 +1,31 @@
 import { useMemo } from 'react'
-import { MapPin } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { FacilityRow } from '@/lib/facility-rows'
 import { formatDate } from '@/lib/format'
 import { summarizeRows } from '@/lib/summary'
+import type { Grade } from '@/types'
 import { GradeDistributionChart } from './grade-distribution-chart'
+import { FacilityMap } from './facility-map'
 
 interface SummaryCardsProps {
   rows: FacilityRow[]
   asOf: string | null
   isLoading: boolean
+  selectedGrades: Grade[]
+  onGradeSelect: (grade: Grade) => void
 }
 
-export function SummaryCards({ rows, asOf, isLoading }: SummaryCardsProps) {
+export function SummaryCards({ rows, asOf, isLoading, selectedGrades, onGradeSelect }: SummaryCardsProps) {
   const summary = useMemo(() => (asOf ? summarizeRows(rows, asOf) : null), [rows, asOf])
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card>
+    <div className="grid gap-4 md:grid-cols-5">
+      <Card className="gap-3 py-4 md:col-span-1">
         <CardHeader>
-          <CardTitle>Hospitals updated last month</CardTitle>
+          <CardTitle className="text-base leading-snug">Hospitals updated last month</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
+        <CardContent className="mt-auto space-y-1">
           {summary && !isLoading ? (
             <>
               <p className="text-4xl font-semibold">{summary.updatedRecently}</p>
@@ -33,27 +36,30 @@ export function SummaryCards({ rows, asOf, isLoading }: SummaryCardsProps) {
           )}
         </CardContent>
       </Card>
-      <Card>
+      <Card className="gap-3 py-4 md:col-span-1">
         <CardHeader>
-          <CardTitle>Hospitals by grade</CardTitle>
+          <CardTitle className="text-base leading-snug">Hospitals by grade</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
+        <CardContent className="mt-auto space-y-1">
           {summary && !isLoading ? (
             <>
-              <GradeDistributionChart distribution={summary.distribution} />
+              <GradeDistributionChart
+                distribution={summary.distribution}
+                selectedGrades={selectedGrades}
+                onGradeSelect={onGradeSelect}
+              />
             </>
           ) : (
             <Skeleton className="h-28 w-full" />
           )}
         </CardContent>
       </Card>
-      <Card>
+      <Card className="min-w-0 gap-3 py-4 md:col-span-3">
         <CardHeader>
-          <CardTitle>Map</CardTitle>
+          <CardTitle className="text-base leading-snug">Map</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-          <MapPin aria-hidden className="size-6" />
-          <p className="text-sm">Statewide map coming in a later pass.</p>
+        <CardContent>
+          <FacilityMap rows={rows} />
         </CardContent>
       </Card>
     </div>

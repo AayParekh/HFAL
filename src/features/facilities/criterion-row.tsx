@@ -23,6 +23,9 @@ export function CriterionRow({ criterion, assessment, documents }: CriterionRowP
     <li className="flex items-stretch gap-3 py-3">
       <div className="min-w-0 flex-1 space-y-2">
         <p className="text-sm font-medium">{copy.question}</p>
+        {criterion.excluded_from_grade && (
+          <Badge variant="secondary">Supplemental — not included in published grade</Badge>
+        )}
         {(measured || assessment?.is_judgment_call) && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             {measured && (
@@ -35,7 +38,8 @@ export function CriterionRow({ criterion, assessment, documents }: CriterionRowP
         )}
         {assessment?.rationale && (
           <p className="text-xs text-muted-foreground">
-            Reviewer note: <span className="text-foreground">{assessment.rationale}</span>
+            {assessment.reviewer ? 'Reviewer note:' : 'Report explanation:'}{' '}
+            <span className="text-foreground">{assessment.rationale}</span>
           </p>
         )}
         <SourceInfo assessment={assessment} document={document} />

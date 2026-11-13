@@ -20,6 +20,7 @@ export const CRITERION_CODES = [
   'pls_psa_described',
   'pls_means_of_applying',
   'pls_income_levels',
+  'application_languages',
 ] as const
 
 export const CriterionCodeSchema = z.enum(CRITERION_CODES)
@@ -39,6 +40,7 @@ export const CriterionSchema = z.object({
   rule: z.string().nullable(),
   // The sample has null here; the contract is a boolean (see HANDOFF.md, decision D1).
   is_auto_fail: z.boolean(),
+  excluded_from_grade: z.boolean().optional(),
 })
 export type Criterion = z.infer<typeof CriterionSchema>
 
@@ -61,6 +63,7 @@ export const FacilitySchema = z.object({
   system_id: z.string().nullable(), // independent hospitals have no system
   package_id: z.string(),
   phone: z.string().nullable(),
+  coordinates: z.tuple([z.number(), z.number()]).nullable().optional(),
 })
 export type Facility = z.infer<typeof FacilitySchema>
 

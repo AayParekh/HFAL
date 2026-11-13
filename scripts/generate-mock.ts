@@ -174,6 +174,7 @@ const STREETS = ['Example Avenue', 'Sample Street', 'Placeholder Road', 'Mocking
 
 const FAIL_RATIONALE: Record<CriterionCode, string> = {
   application_posted: 'No financial assistance application found on the landing page or in linked documents.',
+  application_languages: 'The application is not available in a reported patient language.',
   pls_posted: 'No plain language summary found on the landing page or as a PDF.',
   policy_statement_posted: 'No policy statement found on the landing page or in linked documents.',
   consistent_across_docs: 'The application and the policy give different eligibility thresholds.',

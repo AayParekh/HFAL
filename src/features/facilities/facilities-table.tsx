@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -30,17 +30,31 @@ interface FacilitiesTableProps {
   onRetry: () => void
   selectedPfi: string | null
   onSelect: (pfi: string) => void
+  grades: Grade[]
+  onGradesChange: (grades: Grade[]) => void
 }
 
 function ariaSort(sorted: false | 'asc' | 'desc') {
   return sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : undefined
 }
 
-export function FacilitiesTable({ rows, isLoading, error, onRetry, selectedPfi, onSelect }: FacilitiesTableProps) {
+export function FacilitiesTable({
+  rows,
+  isLoading,
+  error,
+  onRetry,
+  selectedPfi,
+  onSelect,
+  grades,
+  onGradesChange,
+}: FacilitiesTableProps) {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
   const [query, setQuery] = useState('')
-  const [grades, setGrades] = useState<Grade[]>([])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+  useEffect(() => {
+    setPagination((current) => ({ ...current, pageIndex: 0 }))
+  }, [grades])
 
   const columnFilters = useMemo<ColumnFiltersState>(
     () => [{ id: 'name', value: query }, { id: 'grade', value: grades }],
@@ -87,7 +101,7 @@ export function FacilitiesTable({ rows, isLoading, error, onRetry, selectedPfi, 
         query={query}
         onQueryChange={(value) => { setQuery(value); goToFirstPage() }}
         grades={grades}
-        onGradesChange={(value) => { setGrades(value); goToFirstPage() }}
+        onGradesChange={onGradesChange}
       />
       <div className="rounded-md border border-border" aria-busy={isLoading}>
         <Table>
@@ -119,7 +133,7 @@ export function FacilitiesTable({ rows, isLoading, error, onRetry, selectedPfi, 
                   {hasFilters ? (
                     <div className="flex flex-col items-center gap-2">
                       <p>No hospitals match your search or filters.</p>
-                      <Button variant="outline" size="sm" onClick={() => { setQuery(''); setGrades([]) }}>
+                      <Button variant="outline" size="sm" onClick={() => { setQuery(''); onGradesChange([]) }}>
                         Clear filters
                       </Button>
                     </div>

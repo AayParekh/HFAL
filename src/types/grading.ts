@@ -14,6 +14,8 @@ export const GradeResultSchema = z.object({
   auto_fail: z.boolean(),
   computed: z.boolean(),
   note: z.string().nullable(),
+  report_status: z.enum(['graded', 'provisional']).optional(),
+  open_count: z.number().int().nonnegative().optional(),
 })
 export type GradeResult = z.infer<typeof GradeResultSchema>
 

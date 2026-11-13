@@ -70,8 +70,8 @@ export const CRITERIA_COPY: Record<CriterionCode, CriterionCopy> = {
   },
   // DRAFT: needs CSSNY legal review
   app_fpl_year_current: {
-    question: 'Does the application use the 2025 federal poverty level (FPL) guidelines?',
-    explanation: 'The rubric checks that the application uses the 2025 FPL guidelines. Any other year, or a missing year, counts as not met.',
+    question: 'Does the application use current poverty figures?',
+    explanation: 'The report checks whether the application uses current federal poverty figures.',
   },
   // DRAFT: needs CSSNY legal review
   app_max_fpl_pct: {
@@ -97,6 +97,10 @@ export const CRITERIA_COPY: Record<CriterionCode, CriterionCopy> = {
   pls_income_levels: {
     question: 'Does the summary state the income levels used (dollar amounts or % of FPL)?',
     explanation: 'The rubric checks that the summary states the income levels used to determine assistance, either as dollar amounts or as a percentage of FPL.',
+  },
+  application_languages: {
+    question: 'Is the application available in patients’ languages?',
+    explanation: 'This supplemental outcome is reported separately and is not included in the published grade.',
   },
 }
 

@@ -34,42 +34,45 @@ export const facilityColumns: ColumnDef<FacilityRow>[] = [
     id: 'name',
     accessorFn: (row) => row.name,
     header: ({ column }) => <SortableHeader column={column} label="Hospital name" />,
-    cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+    cell: ({ row }) => (
+      <div className="flex items-center gap-2">
+        <span className="font-medium">{row.original.name}</span>
+        {row.original.faPageUrl && (
+          <a
+            href={row.original.faPageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${row.original.name} financial assistance page in a new tab`}
+            title="Open financial assistance page"
+            className="inline-flex shrink-0 rounded-sm text-muted-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ExternalLink aria-hidden className="size-4" />
+          </a>
+        )}
+      </div>
+    ),
     filterFn: 'includesString',
   },
   {
     id: 'address',
-    accessorFn: (row) => `${row.address}, ${row.city}, ${row.zip}`,
+    accessorFn: (row) => [row.address, row.city, row.state, row.zip].filter(Boolean).join(', '),
     header: 'Address',
     enableSorting: false,
-  },
-  {
-    id: 'faPage',
-    header: 'Financial assistance page',
-    enableSorting: false,
-    cell: ({ row }) =>
-      row.original.faPageUrl ? (
-        <a
-          href={row.original.faPageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-sm text-primary underline underline-offset-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          onClick={(event) => event.stopPropagation()}
-        >
-          Financial assistance page
-          <ExternalLink aria-hidden className="size-3.5" />
-          <span className="sr-only">(opens in new tab)</span>
-        </a>
-      ) : (
-        <span className="text-muted-foreground">Not available</span>
-      ),
+    cell: ({ row }) => {
+      const address = [row.original.address, row.original.city, row.original.state, row.original.zip].filter(Boolean).join(', ')
+      return address || <span className="text-muted-foreground">Not provided in report</span>
+    },
   },
   {
     id: 'location',
     accessorFn: (row) => `${row.city}, ${row.county}`,
     header: 'Location',
     enableSorting: false,
-    cell: ({ row }) => `${row.original.city}, ${row.original.county} County`,
+    cell: ({ row }) => {
+      const location = [row.original.city, row.original.county && `${row.original.county} County`].filter(Boolean).join(', ')
+      return location || <span className="text-muted-foreground">Not provided in report</span>
+    },
   },
   {
     id: 'lastUpdated',

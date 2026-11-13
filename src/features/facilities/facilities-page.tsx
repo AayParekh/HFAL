@@ -1,15 +1,17 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { FacilitiesTable } from './facilities-table'
 import { FacilitySheet } from './facility-sheet'
 import { SummaryCards } from './summary-cards'
 import { useFacilityRows } from './use-facility-rows'
+import type { Grade } from '@/types'
 
 export function FacilitiesPage() {
   const [params, setParams] = useSearchParams()
   const selectedPfi = params.get('pfi')
   const { rows, asOf, auditRound, isPending, error, refetch } = useFacilityRows()
+  const [grades, setGrades] = useState<Grade[]>([])
   const selectedRow = useMemo(() => rows.find((row) => row.pfi === selectedPfi), [rows, selectedPfi])
   const lastOpenedPfi = useRef<string | null>(null)
 
@@ -49,8 +51,27 @@ export function FacilitiesPage() {
         </div>
         <ThemeToggle />
       </header>
-      {!error && <SummaryCards rows={rows} asOf={asOf} isLoading={isPending} />}
-      <FacilitiesTable rows={rows} isLoading={isPending} error={error} onRetry={refetch} selectedPfi={selectedPfi} onSelect={select} />
+      {!error && (
+        <SummaryCards
+          rows={rows}
+          asOf={asOf}
+          isLoading={isPending}
+          selectedGrades={grades}
+          onGradeSelect={(grade) => setGrades((current) =>
+            current.length === 1 && current[0] === grade ? [] : [grade],
+          )}
+        />
+      )}
+      <FacilitiesTable
+        rows={rows}
+        isLoading={isPending}
+        error={error}
+        onRetry={refetch}
+        selectedPfi={selectedPfi}
+        onSelect={select}
+        grades={grades}
+        onGradesChange={setGrades}
+      />
       <FacilitySheet pfi={selectedPfi} row={selectedRow} onClose={close} onCloseAutoFocus={restoreFocus} />
     </div>
   )

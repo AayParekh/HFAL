@@ -4,7 +4,8 @@ import { gradeFacility, gradeForErrorCount, selectApplicableAssessments } from '
 import type { AssessmentResult } from '@/types'
 
 const AUTO_FAIL = ['application_posted', 'uniform_app_complete', 'policy_statement_posted']
-const NON_AUTO_FAIL = CRITERIA.map((c) => c.code).filter((code) => !AUTO_FAIL.includes(code))
+const NON_AUTO_FAIL = CRITERIA.filter((criterion) => !criterion.is_auto_fail && !criterion.excluded_from_grade)
+  .map((criterion) => criterion.code)
 
 /** All criteria `fill`ed (default pass), with per-code overrides. `null` = not assessed. */
 function build(overrides: Record<string, AssessmentResult | null> = {}, fill: AssessmentResult = 'pass') {
