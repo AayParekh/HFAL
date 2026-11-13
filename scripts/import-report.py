@@ -118,6 +118,35 @@ def direct_cells(row):
     return [child for child in row.children if isinstance(child, Node) and child.tag == "td"]
 
 
+def report_locations(root):
+    locations = {}
+    for row in descendants(root, "tr"):
+        cells = direct_cells(row)
+        if not cells:
+            continue
+        hospital_link = next(
+            (
+                anchor for anchor in descendants(cells[0], "a")
+                if re.fullmatch(r"#h\d+", anchor.attrs.get("href", ""))
+            ),
+            None,
+        )
+        if hospital_link is None:
+            continue
+        pfi = hospital_link.attrs["href"][2:]
+        city_node = next(
+            (
+                node for node in descendants(cells[0], "div")
+                if {"small", "muted"}.issubset(node.attrs.get("class", "").split())
+            ),
+            None,
+        )
+        if city_node is None:
+            raise SystemExit(f"No city listed in report summary for {pfi}")
+        locations[pfi] = text(city_node)
+    return locations
+
+
 def document_type(code, url):
     if code in APPLICATION_CODES:
         return "application"
@@ -143,14 +172,18 @@ def main():
         node for node in descendants(parser.root, "details")
         if re.fullmatch(r"h\d+", node.attrs.get("id", ""))
     ]
-    if len(hospitals) != 20:
-        raise SystemExit(f"Expected 20 hospital records, found {len(hospitals)}")
+    if len(hospitals) != 77:
+        raise SystemExit(f"Expected 77 hospital records, found {len(hospitals)}")
 
     base = json.loads((ROOT / "src/api/mock/data/generated.json").read_text())
     facilities, packages, documents, assessments, grade_results = [], [], [], [], []
     seen_documents = {}
     audit_round = "2026-11"
-    report_date = "2026-11-11"
+    generated_date = re.search(r"\bgenerated\s+(\d{4}-\d{2}-\d{2})\b", text(parser.root))
+    if not generated_date:
+        raise SystemExit("Could not find the report generation date")
+    report_date = generated_date.group(1)
+    locations = report_locations(parser.root)
 
     for hospital in hospitals:
         pfi = hospital.attrs["id"][1:]
@@ -164,9 +197,12 @@ def main():
             raise SystemExit(f"Could not parse published summary for {pfi}: {text(summary)!r}")
         name, grade, status, not_met, open_count = match.groups()
         address = HOSPITAL_ADDRESSES.get(name.strip())
-        if address is None:
-            raise SystemExit(f"No verified address is configured for {name.strip()!r}")
-        street, city, zip_code, latitude, longitude = address
+        street, zip_code, latitude, longitude = ("", "", None, None) if address is None else (
+            address[0], address[2], address[3], address[4],
+        )
+        city = locations.get(pfi)
+        if not city:
+            raise SystemExit(f"No city is configured for hospital {pfi} ({name.strip()})")
         links = list(descendants(hospital, "a"))
         landing_url = links[0].attrs.get("href") if links else None
         facilities.append({
@@ -174,7 +210,7 @@ def main():
             "city": city, "county": "",
             "state": "NY", "zip": zip_code, "ocn": "", "ccn": "", "system_id": None,
             "package_id": package_id, "phone": None,
-            "coordinates": [latitude, longitude],
+            "coordinates": [latitude, longitude] if latitude is not None and longitude is not None else None,
         })
         packages.append({
             "package_id": package_id, "owner_system_id": None, "landing_url": landing_url,

@@ -7,13 +7,18 @@ import { DatasetSchema, FacilityListItemSchema } from '@/types'
 const report = DatasetSchema.parse(reportJson)
 
 describe('published report dataset', () => {
-  it('contains all 20 hospitals and the published grade distribution', () => {
-    expect(report.facilities).toHaveLength(20)
-    expect(report.assessments).toHaveLength(360)
+  it('contains all 77 hospitals and the published grade distribution', () => {
+    expect(report.facilities).toHaveLength(77)
+    expect(report.assessments).toHaveLength(1386)
     expect(report.grade_results.reduce<Record<string, number>>((counts, result) => {
       counts[result.grade] = (counts[result.grade] ?? 0) + 1
       return counts
-    }, {})).toEqual({ B: 6, C: 8, F: 6 })
+    }, {})).toEqual({ A: 2, B: 46, C: 8, F: 21 })
+    expect(report.grade_results.reduce<Record<string, number>>((counts, result) => {
+      const status = result.report_status ?? 'unknown'
+      counts[status] = (counts[status] ?? 0) + 1
+      return counts
+    }, {})).toEqual({ graded: 40, provisional: 37 })
   })
 
   it('preserves each report grade and its open-result count in facility rows', () => {
@@ -32,22 +37,23 @@ describe('published report dataset', () => {
       return FacilityListItemSchema.parse({
         facility,
         fa_page_url: report.packages.find((pkg) => pkg.package_id === facility.package_id)?.landing_url ?? null,
-        last_retrieved_at: '2026-11-11',
+        last_retrieved_at: '2026-11-13',
         assessments: assessments.map(({ criterion_code, scope, result }) => ({ criterion_code, scope, result })),
         stored_grade: storedGrade,
       })
     })
     const rows = buildFacilityRows(items, report.criteria)
-    const bronxCare = rows.find((row) => row.name === 'BronxCare Hospital Center')
+    const bronxCare = rows.find((row) => row.pfi === '1164')
     const supplemental = rows.find((row) => row.name === 'Brooklyn Hospital Center - Downtown Campus')
 
-    expect(rows.map((row) => row.grade.grade).sort()).toEqual([
-      'B', 'B', 'B', 'B', 'B', 'B', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
-      'F', 'F', 'F', 'F', 'F', 'F',
-    ])
-    expect(bronxCare?.publishedReport).toEqual({ status: 'provisional', notMetCount: 4, openCount: 4 })
+    expect(rows).toHaveLength(77)
+    expect(rows.filter((row) => row.grade.grade === 'A')).toHaveLength(2)
+    expect(rows.filter((row) => row.grade.grade === 'B')).toHaveLength(46)
+    expect(rows.filter((row) => row.grade.grade === 'C')).toHaveLength(8)
+    expect(rows.filter((row) => row.grade.grade === 'F')).toHaveLength(21)
+    expect(bronxCare?.publishedReport).toEqual({ status: 'provisional', notMetCount: 3, openCount: 5 })
     expect(bronxCare?.grade.grade).toBe('F')
-    expect(supplemental?.publishedReport?.openCount).toBe(3)
+    expect(supplemental?.publishedReport?.openCount).toBe(1)
   })
 
   it('keeps the language availability result supplemental to the 17 graded criteria', () => {
@@ -61,10 +67,8 @@ describe('published report dataset', () => {
     )).toBe(true)
   })
 
-  it('includes a street address and city for every hospital in the report', () => {
-    expect(report.facilities.every(({ address, city, state, zip }) =>
-      address.length > 0 && city.length > 0 && state === 'NY' && /^\d{5}$/.test(zip),
-    )).toBe(true)
+  it('uses report cities and retains verified addresses where available', () => {
+    expect(report.facilities.every(({ city, state }) => city.length > 0 && state === 'NY')).toBe(true)
     const addresses = Object.fromEntries(report.facilities.map(({ name, address, city, zip }) => [
       name,
       `${address}, ${city}, NY ${zip}`,
@@ -76,8 +80,10 @@ describe('published report dataset', () => {
     expect(addresses["St. Joseph's Hospital"]).toBe('555 Saint Josephs Boulevard, Elmira, NY 14901')
   })
 
-  it('includes map coordinates for each address', () => {
-    expect(report.facilities.every(({ coordinates }) =>
+  it('includes only valid, available map coordinates', () => {
+    const mappedFacilities = report.facilities.filter(({ coordinates }) => coordinates != null)
+    expect(mappedFacilities.length).toBeGreaterThan(0)
+    expect(mappedFacilities.every(({ coordinates }) =>
       coordinates !== undefined
       && coordinates !== null
       && coordinates[0] >= 40

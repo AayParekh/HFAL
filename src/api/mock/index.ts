@@ -19,8 +19,6 @@ import reportJson from './data/report.json'
  *   ?pfi=unknown -> getFacilityDetail returns a 404 (shows the panel error state)
  */
 
-const AS_OF = '2026-11-11'
-
 let cache: Dataset | null = null
 
 function loadDataset(): Dataset {
@@ -50,7 +48,7 @@ export const mockApi: ApiClient = {
     const data = loadDataset()
     const facilities = mockFlag() === 'empty' ? [] : data.facilities
     return FacilitiesResponseSchema.parse({
-      as_of: AS_OF,
+      as_of: maxDate(data.documents.map((document) => document.retrieved_at)),
       audit_round: data.audit_round,
       rubric_version: data.rubric_version,
       facilities: facilities.map((facility) => {
