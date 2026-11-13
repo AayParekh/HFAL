@@ -3,7 +3,9 @@
   "runs": [
     "20261112T212213Z_openweight_us-moonshotai-kimi-k3_v7",
     "20261113T045436Z_openweight_us-moonshotai-kimi-k3_v7",
-    "20261113T061056Z_openweight_us-moonshotai-kimi-k3_v7"
+    "20261113T061056Z_openweight_us-moonshotai-kimi-k3_v7",
+    "20261113T161128Z_openweight_us-moonshotai-kimi-k3_v7",
+    "20261113T175208Z_openweight_us-moonshotai-kimi-k3_v7"
   ],
   "prompt_versions": [
     "v7"
@@ -13,6 +15,6 @@
   ],
   "open_items_count_as_no": true,
   "explanations_version": "draft-1",
-  "hospitals": 77,
-  "hospitals_collected_despite_robots_txt": 3
+  "hospitals": 106,
+  "hospitals_collected_despite_robots_txt": 9
 }
