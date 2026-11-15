@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """Convert the HFAL results HTML report into the mock dataset used by the app."""
 
+import csv
 import json
 import re
 import sys
+from collections import Counter
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO = ROOT.parent  # the pipeline repository that holds frontend/
+NEW_YORK = ZoneInfo("America/New_York")
+# Coordinates for hospitals not in HOSPITAL_ADDRESSES, from scripts/geocode-hospitals.py (US Census geocoder).
+LOCATIONS_CSV = Path(__file__).resolve().parent / "hospital-locations.csv"
+UNMAPPED_CSV = Path(__file__).resolve().parent / "hospitals-without-coordinates.csv"
 LABEL_TO_CODE = {
     "Application posted online": "application_posted",
     "Plain-language summary posted": "pls_posted",
@@ -184,6 +193,63 @@ def report_languages(root):
     return languages
 
 
+def read_csv(path):
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def assessed_dates(results_dir, pfis):
+    """Date (New York time) each hospital's model answers were received, for "Last updated".
+
+    The report takes each hospital from one run (run_id in hospitals.csv). Within that run:
+    1. the time of its billed model call in the usage ledger (runs/usage.csv);
+    2. if the run reused a cached reply (not billed again): when that reply was first saved in data/cache/,
+       matched by model and token counts (used only when exactly one cached reply matches);
+    3. otherwise the run's start date, from the run_id.
+    runs/ and data/ are local to the pipeline machine; without them every hospital gets step 3.
+    """
+    run_of = {row["hospital_id"].strip(): row["run_id"].strip() for row in read_csv(results_dir / "hospitals.csv")}
+    ledger = {}
+    for row in read_csv(REPO / "runs" / "usage.csv"):
+        if row.get("purpose") == "ask" and row.get("status") == "ok":
+            key = (row["run_id"], row["hospital_id"])
+            ledger[key] = max(ledger.get(key, ""), row["time_utc"])
+    cached = {}
+    cache_dir = REPO / "data" / "cache"
+    for path in cache_dir.glob("*.json") if cache_dir.exists() else []:
+        try:
+            info = json.loads(path.read_text())["info"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        key = (info.get("model"), info.get("input_tokens"), info.get("output_tokens"))
+        cached.setdefault(key, []).append(path.stat().st_mtime)
+
+    dates, sources = {}, Counter()
+    for pfi in pfis:
+        run = run_of.get(pfi)
+        when, source = None, None
+        if run and (run, pfi) in ledger:
+            when, source = datetime.fromisoformat(ledger[(run, pfi)].replace("Z", "+00:00")), "model call (ledger)"
+        elif run and (REPO / "runs" / run / f"{pfi}.json").exists():
+            call = json.loads((REPO / "runs" / run / f"{pfi}.json").read_text()).get("call", {})
+            times = cached.get((call.get("model"), call.get("input_tokens"), call.get("output_tokens")), [])
+            if call.get("cached") and len(times) == 1:
+                when, source = datetime.fromtimestamp(times[0], tz=timezone.utc), "cached reply"
+        if when is None and run:
+            started = re.match(r"(\d{8}T\d{6})Z", run)
+            if started:
+                when = datetime.strptime(started.group(1), "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
+                source = "run start"
+        if when is None:
+            sources["no date (report date used)"] += 1
+            continue
+        dates[pfi] = when.astimezone(NEW_YORK).date().isoformat()
+        sources[source] += 1
+    return dates, sources
+
+
 def merge_records(existing, incoming, key):
     incoming_by_key = {record[key]: record for record in incoming}
     existing_keys = {record[key] for record in existing}
@@ -313,6 +379,16 @@ def main():
     report_date = generated_date.group(1)
     locations = report_locations(parser.root)
     languages_by_pfi = report_languages(parser.root)
+    dates, date_sources = assessed_dates(source.parent, hospital_ids)
+    # Street address and zip from the hospitals.csv beside report.html; coordinates from the geocoded file.
+    # The hand-checked HOSPITAL_ADDRESSES above win over both.
+    report_addresses = {
+        row["hospital_id"].strip(): (row["address"].strip(), row["zip"].strip())
+        for row in read_csv(source.parent / "hospitals.csv")
+    }
+    geocoded = {
+        row["hospital_id"]: [float(row["latitude"]), float(row["longitude"])] for row in read_csv(LOCATIONS_CSV)
+    }
 
     for hospital in hospitals:
         pfi = hospital.attrs["id"][1:]
@@ -329,6 +405,10 @@ def main():
         street, zip_code, latitude, longitude = ("", "", None, None) if address is None else (
             address[0], address[2], address[3], address[4],
         )
+        if address is None:
+            street, zip_code = report_addresses.get(pfi, ("", ""))
+            latitude, longitude = geocoded.get(pfi, (None, None))
+        assessed_on = dates.get(pfi, report_date)
         city = locations.get(pfi)
         if not city:
             raise SystemExit(f"No city is configured for hospital {pfi} ({name.strip()})")
@@ -416,7 +496,7 @@ def main():
                     documents.append({
                         "document_id": document_id, "package_id": package_id,
                         "doc_type": document_type(code, evidence_url), "url": evidence_url,
-                        "retrieved_at": report_date, "archive_path": None,
+                        "retrieved_at": assessed_on, "archive_path": None,
                         "is_uniform_app": False, "pages_missing": None, "fpl_year_stated": None,
                         "fpl_region": None, "facts": [],
                     })
@@ -444,6 +524,7 @@ def main():
             "noncompliant_count": int(not_met), "auto_fail": False, "computed": False,
             "note": "Published report grade; evaluation statuses are preserved from the report.",
             "report_status": status, "open_count": int(open_count),
+            "assessed_at": assessed_on,
         })
 
     criteria = base["criteria"] + [{
@@ -460,6 +541,35 @@ def main():
     }
     existing_pfis = {facility["pfi"] for facility in existing["facilities"]} if existing else set()
     output = merge_report(existing, incoming) if existing else incoming
+
+    # Hospitals in the hospital table (all 211) that have no result: shown on the map only, in gray.
+    # Identity and location only; never a grade or anything from CSSNY's labels.
+    assessed_pfis = {facility["pfi"] for facility in output["facilities"]}
+    unassessed = []
+    for row in read_csv(REPO / "data" / "hospitals.csv"):
+        pfi = row["hospital_id"].strip()
+        if pfi in assessed_pfis:
+            continue
+        coordinates = geocoded.get(pfi)
+        unassessed.append({
+            "pfi": pfi, "name": row["name"].strip(), "address": row["address"].strip(),
+            "city": row["city"].strip(), "state": "NY", "zip": row["zip"].strip(),
+            "coordinates": coordinates,
+        })
+    if unassessed or "unassessed_facilities" not in output:
+        output["unassessed_facilities"] = unassessed
+    else:
+        print("data/hospitals.csv not found: kept the existing list of hospitals not checked")
+
+    unmapped = [
+        {key: item[key] for key in ("pfi", "name", "address", "city", "zip")}
+        for item in output["facilities"] + output["unassessed_facilities"] if not item.get("coordinates")
+    ]
+    with UNMAPPED_CSV.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["pfi", "name", "address", "city", "zip"])
+        writer.writeheader()
+        writer.writerows(unmapped)
+
     destination.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")
     distribution = {grade: sum(item["grade"] == grade for item in grade_results) for grade in "ABCDF"}
     statuses = {status: sum(item["report_status"] == status for item in grade_results) for status in ("graded", "provisional")}
@@ -469,6 +579,14 @@ def main():
         f"dataset now has {len(output['facilities'])} hospitals and {len(output['assessments'])} criterion results at {destination}"
     )
     print(f"Incoming published grades: {distribution}; report statuses: {statuses}")
+    print(f"Last-updated dates: by source {dict(date_sources)}; by date {dict(sorted(Counter(dates.values()).items()))}")
+    mapped = sum(1 for item in output["facilities"] if item.get("coordinates"))
+    mapped_gray = sum(1 for item in output["unassessed_facilities"] if item.get("coordinates"))
+    print(
+        f"Map: {mapped} of {len(output['facilities'])} checked hospitals and {mapped_gray} of "
+        f"{len(output['unassessed_facilities'])} not-checked hospitals have coordinates; "
+        f"{len(unmapped)} without are listed in {UNMAPPED_CSV.name}"
+    )
 
 
 if __name__ == "__main__":

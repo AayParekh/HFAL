@@ -60,6 +60,32 @@ them. PDF and Word (.docx) files are extracted. Since Nov 12 robots.txt is read 
 (`fetch.respect_robots: false`): links it disallows are fetched and marked `robots_disallowed`, and `hfal report`
 says which hospitals and quotes come from them.
 
+**Headless browser (since Nov 14, `fetch.browser_fallback: true`).** Plain HTTP stays the first try. A headless
+Chromium (Playwright, `src/hfal/browser.py`) retries:
+
+- in `fetch`: a download that was blocked (401/403/429), failed or got a server error (not 404/410), and a landing
+  page that came back with no links (a page built by JavaScript);
+- in `discover`: the whole crawl, when the plain crawl selected no PDF or Word document. The browser's result is kept
+  when it selects a document (or, failing that, a web page where the plain crawl selected nothing). Web pages it
+  selects are written to `sources.csv` as `discovered html (browser)`, and `fetch` reads those in the browser too.
+
+The browser's user agent is its own (it says `HeadlessChrome`) followed by ours. It never solves or clicks a CAPTCHA:
+a page that shows one (hCaptcha, reCAPTCHA, Turnstile, a Radware block page) is `blocked`, and the hospital stays
+excluded as a bot check. What it collects is marked: `fetched_with_browser` (with `plain_status` and
+`browser_status`) in the manifest, `browser` in the discovery record, `fetched_with_browser` per document in a run,
+`collected_with_browser` / `evidence_via_browser` in `hfal report`, and a line under the attrition table. Rendered
+pages carry whatever the page's scripts put there, so the monthly check may see more byte changes on them; it
+already re-asks only when the extracted text changes.
+
+**Web pages only (since Nov 14).** A hospital whose discovery selected no PDF or Word document but at least one web
+page besides its landing page is evaluable (`attrition.required_documents`); before, it was excluded as "broken or
+empty". The landing page alone is never enough.
+
+**Experiment: starting pages by web search (Nov 14).** `uv run python scripts/find_landing.py --validate [--crawl]`
+(dev hospitals with a link) and `--no-link` (the hospitals without one). Writes git-ignored
+`data/found_landing/`; never edits `data/hospitals.csv`. Rules and dev results: the script's docstring and PLAN.md
+"Experiment: finding starting pages".
+
 ## Golden set
 
 CSSNY's hand-labeled sheet (`golden/golden_raw.csv`, git-ignored) becomes long-format labels and their
@@ -178,6 +204,7 @@ tracked files (docs, tests, config): use counts, or invented ids in test fixture
 uv sync
 export ANTHROPIC_API_KEY=...        # needed for `ask` with provider: anthropic (see "Model providers" for Bedrock)
 export HFAL_CONTACT=you@example.org # optional, added to the fetch User-Agent
+uv run playwright install chromium  # once: the headless browser fetch and discover fall back to (fetch.browser_fallback)
 aws sso login --profile hackathon   # for OCR of scanned PDFs in `extract` (settings.yaml `ocr`; see "OCR for scanned PDFs")
 uv run pytest
 ```
@@ -348,7 +375,7 @@ uv run python scripts/judge_review.py split [--dry-run]               # optional
 
 ```bash
 uv run hfal report --run RUN_ID [--run RUN_ID ...]    # -> results/{today}/, copied to results/latest/
-git add results && git commit -m "Results from RUN_ID"  # share it through the private repo
+git add results && git commit -m "Results from RUN_ID"  # share it through the repo (public since Nov 14)
 ```
 
 No model call and no golden labels. A hospital found in several runs is reported from the newest. `results/` is the
@@ -371,6 +398,71 @@ A dashboard reads both CSVs from `results/latest/` (joined on `hospital_id`) and
 `hospitals.csv`; it never works the grade out itself. Dated folders keep the history. The downloaded documents
 (`data/raw`, about 400 MB and growing) stay out of git; S3 is their later home.
 
+## Front end (`frontend/`)
+
+A demo dashboard (React, TypeScript, Vite) built on a separate branch, `css-tracker-ui-polish`, and merged into
+`frontend/` on Nov 14. It needs Node.js and npm (not uv) and has no back end: the results are bundled into the page.
+It shows the Nov 14 report (all 146 hospitals in `results/latest/`); its map also shows the other 65 hospitals of
+the 211 in gray ("Not checked"). Those 65 appear nowhere else: no table row, no grade, not in any count.
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173
+npm test             # 36 tests, including the totals of the bundled report
+npm run typecheck && npm run build
+```
+
+**Updating its data after each `hfal report`:**
+
+```bash
+cd frontend
+python3 scripts/import-report.py ../results/latest/report.html   # -> src/api/mock/data/report.json
+```
+
+The script reads `report.html`, merges it into the existing `report.json`, and prints only totals. Merging means a
+hospital in the new report has its answers, documents and letter replaced, a hospital not in it is kept unchanged
+(nothing is deleted), and a hand-checked address or map pin is never blanked. It matches
+criteria by their label in `report.html` (`LABEL_TO_CODE`); a label it does not know is skipped without a warning, so
+after renaming a label in `report.py`, check that the printed criterion-result count is 18 per hospital. Then update
+the totals in `src/api/mock/report.test.ts` (hospitals, criterion results, letters, graded/provisional, dates,
+hospitals mapped) to the numbers it printed, and the count and date in `src/components/demo-banner.tsx`; run
+`npm test`, and commit `report.json`. The letters shown are the report's own; the front end does not grade report
+hospitals.
+
+**"Last updated"** is the date (New York time) each hospital's model answers were received, in the run the report took
+it from, not the date of the report. The script finds it in the usage ledger (`runs/usage.csv`); when the run reused
+a cached reply, it uses the time that reply was first saved in `data/cache/` (matched by model and token counts;
+checked on Nov 14 against the 110 ledger times: same date for all 110, within two minutes); failing both, the run's
+start date from its `run_id`. It prints how many dates came from each. `runs/` and `data/` exist only on the pipeline
+machine; elsewhere every hospital falls back to its run's start date.
+
+**Addresses and map pins.** Street addresses come from `hospitals.csv` beside `report.html` (and from
+`data/hospitals.csv` for the 65 not checked). Coordinates come from the hand-checked list in the script first, then
+from `scripts/hospital-locations.csv`, made once (Nov 14) by
+
+```bash
+uv run python frontend/scripts/geocode-hospitals.py   # from the repository root
+```
+
+It sends only street, city, state and zip, numbered rather than named, to the US Census Bureau's free batch
+geocoder, and only for hospitals not already in the file, so a row added or fixed by hand stays. On Nov 14 it placed
+192 of 211; on the 18 hand-checked hospitals it also placed, it was within 0.5 km except one (1.4 km). Each import
+writes the hospitals still without coordinates to `scripts/hospitals-without-coordinates.csv` (16 on Nov 14); add
+their `hospital_id,latitude,longitude,source,match` rows to `hospital-locations.csv` by hand (source `hand`) and
+re-import.
+
+**Published site: <https://aayparekh.github.io/HFAL/>** (GitHub Pages, free for a public repository). The workflow
+`.github/workflows/pages.yml` runs on every push to `main` that changes `frontend/` (or by hand: Actions tab, "Front
+end to GitHub Pages", Run workflow). It installs the exact package versions in `frontend/package-lock.json`, runs
+the tests and the type check, builds with `--base=/HFAL/` (the site lives under that path; `src/main.tsx` passes it
+to the router), and publishes `frontend/dist`. A failed test stops it before anything is published. Pages itself is
+switched on once in the repository's Settings, Pages, Source "GitHub Actions". Everything bundled into the page,
+including `report.json`, is public on that site.
+
+Changes made later on the original branch come in with
+`git merge -X subtree=frontend/ origin/css-tracker-ui-polish`.
+
 ## Monthly check (`hfal monitor`)
 
 ```bash
@@ -388,7 +480,11 @@ OCRs any new scanned PDF: Textract, billed per page, cached), tag (the same code
   (file changed, text the same), `still_unreachable`. A removed document is listed, never dropped silently.
 - **Hospital status** (`hospitals.csv`): `changed` when the texts the model would read differ from last time (a new,
   removed or rewritten document). Bytes alone do not count: landing pages change bytes on every visit (session tokens,
-  dates), so `same_text` and `moved` do not cost a model call. `unreachable` when the hospital no longer passes the
+  dates), so `same_text` and `moved` do not cost a model call. Text is compared line by line, ignoring whitespace,
+  blank lines, invisible characters and **line order**, and on HTML pages only, ignoring **website furniture**: lines
+  found on more than half of the hospital's HTML pages (menus, headers, footers; needs at least 3 pages; settings
+  `BOILERPLATE_SHARE`, `BOILERPLATE_MIN_PAGES` in `monitor.py`). This only decides whether to ask again; what the
+  model is sent is unchanged. The same sentence split across lines differently counts as a change. `unreachable` when the hospital no longer passes the
   exclusion rule (blocked, broken, gone, or a scan OCR could not read), with the cause and `newly_unreachable`; it is not asked and stays
   in the working set until you rerun `scripts/attrition.py`. `error` when a step failed: that hospital's manifest,
   discovery record and `sources.csv` rows are put back as they were, and the rest carry on.

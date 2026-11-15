@@ -9,18 +9,18 @@ import { DatasetSchema, FacilityListItemSchema } from '@/types'
 const report = DatasetSchema.parse(reportJson)
 
 describe('published report dataset', () => {
-  it('contains all 106 hospitals and the published grade distribution', () => {
-    expect(report.facilities).toHaveLength(106)
-    expect(report.assessments).toHaveLength(1908)
+  it('contains all 146 hospitals and the published grade distribution', () => {
+    expect(report.facilities).toHaveLength(146)
+    expect(report.assessments).toHaveLength(2628)
     expect(report.grade_results.reduce<Record<string, number>>((counts, result) => {
       counts[result.grade] = (counts[result.grade] ?? 0) + 1
       return counts
-    }, {})).toEqual({ A: 2, B: 59, C: 14, D: 1, F: 30 })
+    }, {})).toEqual({ A: 2, B: 76, C: 20, D: 1, F: 47 })
     expect(report.grade_results.reduce<Record<string, number>>((counts, result) => {
       const status = result.report_status ?? 'unknown'
       counts[status] = (counts[status] ?? 0) + 1
       return counts
-    }, {})).toEqual({ graded: 52, provisional: 54 })
+    }, {})).toEqual({ graded: 72, provisional: 74 })
   })
 
   it('preserves each report grade and its open-result count in facility rows', () => {
@@ -49,12 +49,12 @@ describe('published report dataset', () => {
     const bronxCare = rows.find((row) => row.pfi === '1164')
     const supplemental = rows.find((row) => row.pfi === '1288')
 
-    expect(rows).toHaveLength(106)
+    expect(rows).toHaveLength(146)
     expect(rows.filter((row) => row.grade.grade === 'A')).toHaveLength(2)
-    expect(rows.filter((row) => row.grade.grade === 'B')).toHaveLength(59)
-    expect(rows.filter((row) => row.grade.grade === 'C')).toHaveLength(14)
+    expect(rows.filter((row) => row.grade.grade === 'B')).toHaveLength(76)
+    expect(rows.filter((row) => row.grade.grade === 'C')).toHaveLength(20)
     expect(rows.filter((row) => row.grade.grade === 'D')).toHaveLength(1)
-    expect(rows.filter((row) => row.grade.grade === 'F')).toHaveLength(30)
+    expect(rows.filter((row) => row.grade.grade === 'F')).toHaveLength(47)
     expect(bronxCare?.publishedReport).toEqual({ status: 'provisional', notMetCount: 3, openCount: 5 })
     expect(bronxCare?.grade.grade).toBe('F')
     expect(supplemental?.publishedReport?.openCount).toBe(1)
@@ -99,9 +99,24 @@ describe('published report dataset', () => {
     expect(languageName('en')).toBe('English')
   })
 
+  it('dates every hospital by the run that produced its results, not the report date', () => {
+    const dates = report.grade_results.map((result) => result.assessed_at)
+    expect(dates.every((date) => date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(date))).toBe(true)
+    expect(new Set(dates)).toEqual(new Set(['2026-11-12', '2026-11-13', '2026-11-14']))
+  })
+
+  it('lists every other hospital in the table for the map only, never graded', () => {
+    const checked = new Set(report.facilities.map(({ pfi }) => pfi))
+    const unassessed = report.unassessed_facilities ?? []
+    expect(unassessed).toHaveLength(65)
+    expect(report.facilities.length + unassessed.length).toBe(211)
+    expect(unassessed.some(({ pfi }) => checked.has(pfi))).toBe(false)
+    expect(unassessed.every((hospital) => !('grade' in hospital))).toBe(true)
+  })
+
   it('includes only valid, available map coordinates', () => {
-    const mappedFacilities = report.facilities.filter(({ coordinates }) => coordinates != null)
-    expect(mappedFacilities.length).toBeGreaterThan(0)
+    const mappedFacilities = [...report.facilities, ...(report.unassessed_facilities ?? [])].filter(({ coordinates }) => coordinates != null)
+    expect(mappedFacilities.length).toBe(195)
     expect(mappedFacilities.every(({ coordinates }) =>
       coordinates !== undefined
       && coordinates !== null

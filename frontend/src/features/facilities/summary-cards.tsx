@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { FacilityRow } from '@/lib/facility-rows'
 import { formatDate } from '@/lib/format'
 import { summarizeRows } from '@/lib/summary'
-import type { Criterion, Grade } from '@/types'
+import type { Criterion, Grade, UnassessedFacility } from '@/types'
 import { GradeDistributionChart } from './grade-distribution-chart'
 import { FacilityMap } from './facility-map'
 import { CriteriaFailureChart } from './criteria-failure-chart'
@@ -12,6 +12,7 @@ import { CriteriaFailureChart } from './criteria-failure-chart'
 interface SummaryCardsProps {
   rows: FacilityRow[]
   criteria: Criterion[]
+  unassessed: UnassessedFacility[]
   asOf: string | null
   isLoading: boolean
   selectedGrades: Grade[]
@@ -24,7 +25,7 @@ function thirtyDaysBefore(isoDate: string): string {
   return date.toISOString().slice(0, 10)
 }
 
-export function SummaryCards({ rows, criteria, asOf, isLoading, selectedGrades, onGradeSelect }: SummaryCardsProps) {
+export function SummaryCards({ rows, criteria, unassessed, asOf, isLoading, selectedGrades, onGradeSelect }: SummaryCardsProps) {
   const summary = useMemo(() => (asOf ? summarizeRows(rows, asOf, criteria) : null), [rows, asOf, criteria])
 
   return (
@@ -81,7 +82,7 @@ export function SummaryCards({ rows, criteria, asOf, isLoading, selectedGrades, 
           <CardTitle className="text-base leading-snug">Map</CardTitle>
         </CardHeader>
         <CardContent className="mt-auto">
-          <FacilityMap rows={rows} />
+          <FacilityMap rows={rows} unassessed={unassessed} />
         </CardContent>
       </Card>
     </div>

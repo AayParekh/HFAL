@@ -47,7 +47,9 @@ export const mockApi: ApiClient = {
     if (mockFlag() === 'error') throw new ApiError(500, 'Simulated server error (mock=error)')
     const data = loadDataset()
     const facilities = mockFlag() === 'empty' ? [] : data.facilities
+    const unassessed = mockFlag() === 'empty' ? [] : (data.unassessed_facilities ?? [])
     return FacilitiesResponseSchema.parse({
+      unassessed,
       as_of: maxDate(data.documents.map((document) => document.retrieved_at)),
       audit_round: data.audit_round,
       rubric_version: data.rubric_version,
@@ -57,13 +59,15 @@ export const mockApi: ApiClient = {
           { pfi: facility.pfi, packageId: facility.package_id, documentIds: documents.map((d) => d.document_id), auditRound: data.audit_round },
           data.assessments,
         )
+        const storedGrade = data.grade_results.find((g) => g.package_id === facility.package_id) ?? null
         return {
           facility,
           fa_page_url: data.packages.find((p) => p.package_id === facility.package_id)?.landing_url ?? null,
           languages: data.packages.find((p) => p.package_id === facility.package_id)?.languages ?? [],
-          last_retrieved_at: maxDate(documents.map((d) => d.retrieved_at)),
+          // The date this hospital's results were produced (its run), not the date of the report.
+          last_retrieved_at: storedGrade?.assessed_at ?? maxDate(documents.map((d) => d.retrieved_at)),
           assessments: applicable.map((a) => ({ criterion_code: a.criterion_code, scope: a.scope, result: a.result })),
-          stored_grade: data.grade_results.find((g) => g.package_id === facility.package_id) ?? null,
+          stored_grade: storedGrade,
         }
       }),
     })

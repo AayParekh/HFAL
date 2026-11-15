@@ -15,7 +15,8 @@ if (!root) throw new Error('Missing #root element')
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/* On GitHub Pages the site lives under /HFAL/ (the build sets --base); locally it is "/". */}
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>

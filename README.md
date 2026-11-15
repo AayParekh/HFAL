@@ -59,7 +59,8 @@ not the state's complete uniform application (an automatic F).
   CSSNY's review (38) or a page where nothing could be found; 11 (the NYC Health + Hospitals sites) show a "prove you
   are human" puzzle, which the tool never solves. These are left for a person rather than worked around. The 146 are
   split, at random, into 86 hospitals used to build and tune the tool and 60 held back to test it honestly later.
-  **77 of the 86 have been checked so far.**
+  **All 146 have been checked.** The results for the 60 held-back hospitals are shown in the report, but they have
+  not yet been used for the honest accuracy test.
 - **Agreement with CSSNY's review.** On 40 hospitals drawn at random, the tool's answers match CSSNY's September 2025
   answers on **79%** of the questions, and it gives the same letter grade for **28 of 40** hospitals (within one letter
   for 33).
@@ -70,8 +71,16 @@ not the state's complete uniform application (an automatic F).
 - **Cost.** The AI step costs about **$0.65 per hospital**. The monthly check only re-reads hospitals that changed.
 
 **Read the latest report:** open [`results/latest/report.html`](results/latest/report.html) in a web browser
-(download it first if you are viewing this on GitHub). It covers the 77 hospitals checked so far; they were not drawn
-at random, so its grades are not a statewide picture. Earlier reports are kept in dated folders under `results/`.
+(download it first if you are viewing this on GitHub). It covers all 146 hospitals the tool can check. The 65 it
+cannot check are left out, and they are not a random set, so its grades are not a statewide picture. Earlier reports
+are kept in dated folders under `results/`.
+
+**See it as a dashboard:** a demo website in [`frontend/`](frontend/) shows results as a searchable table, with each
+hospital's answers, quotations and links in a side panel, charts of the grades and of the most common problems, and
+a map. It shows all 146 hospitals in the latest report, each with the date it was checked. The map also shows the
+other hospitals from CSSNY's list in gray, as "not checked" (195 of the 211 are on the map so far). It is a prototype
+and its explanations are drafts. **Open it at <https://aayparekh.github.io/HFAL/>.** It is rebuilt automatically
+whenever its files change in this repository (details in [docs/technical.md](docs/technical.md), "Front end").
 
 ## Reading the report
 
@@ -109,7 +118,8 @@ at random, so its grades are not a statewide picture. Earlier reports are kept i
 ## For developers
 
 Setup, commands, configuration and the design of each step: [docs/technical.md](docs/technical.md). How documents
-are found on hospital websites: [docs/discovery.md](docs/discovery.md).
+are found on hospital websites: [docs/discovery.md](docs/discovery.md). The demo front end has its own
+[README](frontend/README.md).
 
 ```bash
 uv sync          # install

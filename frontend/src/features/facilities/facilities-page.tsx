@@ -10,7 +10,7 @@ import type { Grade } from '@/types'
 export function FacilitiesPage() {
   const [params, setParams] = useSearchParams()
   const selectedPfi = params.get('pfi')
-  const { rows, criteria, asOf, auditRound, isPending, error, refetch } = useFacilityRows()
+  const { rows, criteria, unassessed, asOf, auditRound, isPending, error, refetch } = useFacilityRows()
   const [grades, setGrades] = useState<Grade[]>([])
   const selectedRow = useMemo(() => rows.find((row) => row.pfi === selectedPfi), [rows, selectedPfi])
   const lastOpenedPfi = useRef<string | null>(null)
@@ -55,6 +55,7 @@ export function FacilitiesPage() {
         <SummaryCards
           rows={rows}
           criteria={criteria}
+          unassessed={unassessed}
           asOf={asOf}
           isLoading={isPending}
           selectedGrades={grades}

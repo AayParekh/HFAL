@@ -16,6 +16,8 @@ export const GradeResultSchema = z.object({
   note: z.string().nullable(),
   report_status: z.enum(['graded', 'provisional']).optional(),
   open_count: z.number().int().nonnegative().optional(),
+  /** Date (YYYY-MM-DD, New York time) the model's answers for this hospital were received. */
+  assessed_at: z.string().optional(),
 })
 export type GradeResult = z.infer<typeof GradeResultSchema>
 

@@ -18,7 +18,9 @@ advocates, regulators, lawmakers.
 **Current scope: the back-end pipeline, developed on CSSNY's 27-hospital sample plus 67 hospitals drawn at
 random from the rest (82 usable in dev, 41 usable in eval since OCR on Nov 12; 80 and 34 before), and evaluated on the remaining hospitals in their hand-labeled golden set, plus a
 monthly check for new or changed documents.
-No front end, no analytics yet. Schedule and task list: [PLAN.md](../PLAN.md).**
+No analytics yet. A demo front end (`frontend/`, merged Nov 14) shows the latest results report (all 146 hospitals in
+`results/latest/`: table, side panel, map; the map also shows the other 65 hospitals in gray). It is a prototype,
+not the product. Schedule and task list: [PLAN.md](../PLAN.md).**
 
 Accuracy beats cost. Two errors are equally serious: telling a patient they are eligible when they are
 not, and steering a patient away from a hospital wrongly. When unsure, flag for manual review.
@@ -39,12 +41,14 @@ listing options. Python environment via uv (not conda). Works in VS Code.
   counts as shared. `.claude/settings.json` (added later) denies Read/Edit on `golden/` and `data/sample*` and a few obvious
   Bash patterns (`.gitignore` also excludes them); that is a guardrail, not a
   guarantee (it does not stop shell commands).
-- The GitHub repo must be private. Also git-ignored: CSSNY's data dictionary `config/criteria_raw.csv` and the
+- **The GitHub repo is public since Nov 14 (owner's decision; it was private before).** Everything tracked, and
+  all git history, is visible to anyone: treat every commit as publishing. History was checked that day: no
+  CSSNY files, no private email; `PLAN.md` was tracked until Nov 13, so its older versions are public. Also git-ignored: CSSNY's data dictionary `config/criteria_raw.csv` and the
   criteria files generated from it, `data/hospitals.csv`, `data/sources.csv`, `data/exclusions.yaml`,
   `data/attrition.csv`, `data/review/`, `data/report/`, `data/monitor/`, `runs/`. Never write hospital ids of the sample into tracked files
   (PLAN.md, docs, tests, config): use counts, or invented ids and names in test fixtures.
   **One exception (decided Nov 11, owner): `results/`**, written by `hfal report`, is tracked so a dashboard can read
-  it from the private repo (`results/latest/`). It is our own results from public websites and may name hospitals
+  it from the repo (`results/latest/`; public since Nov 14). It is our own results from public websites and may name hospitals
   (so it shows which hospitals are in dev). It must never carry CSSNY's labels or anything derived from them: no
   golden label, letter or note, no judge or review data, no corrected labels (`tests/test_report.py` checks the
   columns). Raw documents (`data/raw`, hundreds of MB and growing) stay out of git; S3 is their later home. Tests that need the
@@ -137,13 +141,21 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   document link and page, the law cited; for the uniform application and consistency a code-made `evidence_summary`
   replaces the quote, and a NOT_FOUND summary criterion with a collected web page gets a `for_reviewer` pointer,
   both Nov 13), `report.html`, `meta.json`. No model call, no golden labels. A dashboard
-  reads `results/latest/` and takes the letter from `hospitals.csv`; it never recomputes grades.
+  reads `results/latest/` and takes the letter from `hospitals.csv`; it never recomputes grades. The demo front end
+  (`frontend/`) reads a copy of a results report made by `frontend/scripts/import-report.py`
+  (`frontend/src/api/mock/data/report.json`, tracked under the same `results/` rule: our results only, no CSSNY
+  labels; currently the Nov 14 report, 146 hospitals) and shows the report's letters as published. **Extension
+  (owner, Nov 14):** so the map can show all 211, `report.json` also lists the 65 hospitals not checked
+  (`unassessed_facilities`: id, name, street address, city, zip, coordinates, from `data/hospitals.csv`), and
+  `frontend/scripts/hospital-locations.csv` holds coordinates for all 211. Identity and location only: never a grade,
+  a dev/eval set, a sample flag or anything from CSSNY's labels.
 - **Storage:** content-addressed files under `data/raw/{hospital_id}/files/`, dated manifests recording
   status and change detection by hash. Raw data is git-ignored.
 - **Monthly check is a scheduled script, not a Claude skill.** `hfal monitor` (built, `monitor.py`; dev working set
   only) re-runs fetch and discovery, diffs against the last manifest from before today, reports new / changed /
   removed / unreachable / moved documents, and re-runs the model only for hospitals whose extracted text changed
-  (bytes alone do not count). A hospital that becomes blocked or broken, or posts a scan OCR cannot read, is
+  (bytes alone do not count; line order and, on HTML pages, lines on most of the hospital's pages are ignored, Nov 13).
+  A hospital that becomes blocked or broken, or posts a scan OCR cannot read, is
   reported unreachable, not asked. A new scan is OCR'd during the check (Textract, billed per page, cached).
   Scheduled with launchd locally (not set up yet); a server or AWS timer later. Discovery must therefore be
   deterministic. A removed document is reported, never silently dropped.
@@ -189,6 +201,24 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   checks every quote is word for word in the cited part, and `hfal report` stops before writing if that check finds
   any problem. A `basis` field keeps the text from claiming the law says
   more than it does. The law text is not in the answerer's prompt. `hfal report` attaches them to each result.
+- **Headless browser as a fallback (decided Nov 14, owner).** This reverses "no real browser". Playwright's headless
+  Chromium (`browser.py`, `fetch.browser_fallback`) retries what plain HTTP could not read: a blocked or failed
+  download, a landing page with no links, and in discovery a crawl that selected no PDF or Word file. Not Playwright
+  MCP: the pipeline must stay a deterministic script (monthly check, eval documents by the automatic rule only).
+  Honest user agent (the browser's own "HeadlessChrome" plus `hfal-monitor/0.1`), same delay. **CAPTCHAs are never
+  solved**: that hospital stays excluded as a bot check (the 11 NYC Health + Hospitals sites show an hCaptcha).
+  Everything it collects is marked (`fetched_with_browser`, discovery `browser`) and reported like robots.txt
+  (`collected_with_browser`, `evidence_via_browser`, attrition line). Same day: a hospital whose discovery selected
+  web pages but no PDF/Word counts as evaluable (`attrition.required_documents`; dev evidence: 13% of verified v7
+  answers quote a web page); the landing page alone never does. Applied by re-running fetch, discover, extract (OCR
+  off) and tag for the 41 hospitals excluded as blocked or broken only: 9 joined the working set (1 dev, 8 eval;
+  4 through the browser, 3 web-page-only, 2 because their sites changed). 5 more (eval; 4 of them found by the
+  browser) joined after OCR, approved by the owner the same day (64 pages, $0.096). Working set **146: 86 dev,
+  60 eval**. Nobody was redrawn or asked.
+- **Starting pages by web search: an experiment only (Nov 14).** `scripts/find_landing.py` searches once per
+  hospital (DuckDuckGo HTML, fixed rules, cached in git-ignored `data/found_landing/`) for the 38 hospitals with no
+  landing link, validated on dev hospitals that have one. It never edits `data/hospitals.csv`; adopting its pages
+  would end "given a known starting page" for those hospitals and is a separate decision.
 - **Doc types are multi-label** (one PDF can hold policy + summary + application).
 - **`ask` only sees documents in a hospital's latest manifest.** Older files stay on disk (content-addressed)
   but are never sent once discovery stops selecting them or the site stops serving them.
@@ -207,7 +237,8 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   only, never tune on them). **The split is frozen** (the draw script refuses to run again). Details and
   checkpoint rules in PLAN.md. OCR (Nov 12) brought back 9 excluded hospitals into the sets they already had
   (nothing redrawn): working set 123, dev 82, eval 41. Ignoring robots.txt (Nov 12) brought back 9 more the same
-  way: working set 132, dev 85, eval 47.
+  way: working set 132, dev 85, eval 47. The browser fallback and web-page-only rule (Nov 14) brought back 9 more:
+  working set 146, dev 86, eval 60 (with OCR of 5 more, owner's yes, Nov 14).
 - **OCR with Amazon Textract (decided Nov 12, owner).** This reverses "scans are excluded". `hfal extract` sends only
   the near-empty pages of PDFs flagged `needs_ocr` to Textract DetectDocumentText (`ocr.py`, settings `ocr`): one page
   per synchronous call, drawn locally as a PNG, no S3. Pages with their own text layer are never changed. Replies are
@@ -220,8 +251,7 @@ dev hospitals were drawn at random from the eval hospitals in the working set (s
   manifest entry, `robots_txt_ignored` in `data/discovered/{id}.json`, `robots_disallowed` on each document in a run).
   It is never hidden: `hfal report` has `collected_despite_robots_txt` (hospitals.csv) and
   `evidence_despite_robots_txt` (criteria.csv) plus a note in report.html, and the attrition table counts the
-  hospitals. Same honest user agent and delay as before. **Bot checks are still not worked around** (no real browser,
-  no disguised user agent), and manual downloads still do not rescue excluded hospitals. Applied by re-running fetch,
+  hospitals. Same honest user agent and delay as before. Manual downloads still do not rescue excluded hospitals. Applied by re-running fetch,
   discover, extract and tag for the 11 hospitals that robots.txt had excluded: 9 joined the working set (3 dev, 6
   eval), 2 now stop at a bot check. Other hospitals take the setting at their next fetch, which may change what
   discovery finds for them. Known cost: a hospital disputing its grade can point to it (PLAN.md "Scope rules").
@@ -240,7 +270,7 @@ be site changes or sheet mistakes. Corrected labels are never used for eval or f
 ## Repo map
 
 `src/hfal/`: `fetch.py` (download; OS trust store via truststore; ingests `data/manual/{hospital_id}/`),
-`discover.py` (keyword crawl from the saved landing page, candidate selection, health-system name filter), `extract.py` (PDF/Word/HTML to per-page text, flags `needs_ocr`), `ocr.py` (Amazon Textract for scanned pages, called by extract),
+`discover.py` (keyword crawl from the saved landing page, candidate selection, health-system name filter), `browser.py` (headless Chromium fallback for fetch and discover), `extract.py` (PDF/Word/HTML to per-page text, flags `needs_ocr`), `ocr.py` (Amazon Textract for scanned pages, called by extract),
 `tag.py` (keyword doc-type rules), `ask.py` (model call + quote verification), `verify.py`, `formcheck.py` (match to the state form), `fpl.py` (which year's poverty figures), `maxfpl.py` (400% statement), `schema.py`,
 `grade.py`, `score.py`, `explain.py` (checks the plain-language templates against the law text), `judge.py` (explains dev disagreements; never decides a match), `consistency.py` (consistency point by point, combined in code; v7 on), `sizecheck.py` (error rate by prompt size, dev only), `doccheck.py` (`doc_not_found` rows and document coverage: finds discovery problems), `attrition.py` (the exclusion
 rule, shared by `scripts/attrition.py` and `monitor.py`), `monitor.py` (monthly check), `report.py` (readable results with explanations), `corrected.py` (corrected labels
@@ -249,21 +279,49 @@ for scoring), `usage.py` (token and cost summary, ledger `runs/usage.csv`, price
 `seed_hospitals.py`, `golden_convert.py`, `check_grader.py`, `review_discovery.py`, `judge_review.py` (merges several
 runs' `judge.csv` into one git-ignored sheet `data/review/judge_review.csv` for hand bucketing, and splits
 `human_bucket` / `human_note` back; adds `hospital_name` from `data/hospitals.csv` for reading),
-`build_corrected_labels.py`, `final_run.py` (the final `ask` run in several processes; `runcheck.py` checks every
-hospital's file and rewrites the run-level files)). Tests in `tests/` (356 passing with the CSSNY files present).
+`build_corrected_labels.py`, `find_landing.py` (experiment: starting pages by web search), `representativeness.py` (do measured groups look like all 211 on sheet features and
+CSSNY letters; aggregates only), `final_run.py` (the final `ask` run in several processes; `runcheck.py` checks every
+hospital's file and rewrites the run-level files)). Tests in `tests/` (380 passing with the CSSNY files present).
+
+`frontend/`: the demo front end (React, TypeScript, Vite; Node/npm, not uv). Built on a separate branch
+`css-tracker-ui-polish` by a collaborator with no shared history and merged into this folder on Nov 14 (bring later
+branch changes in with `git merge -X subtree=frontend/ origin/css-tracker-ui-polish`). It has its own README,
+`HANDOFF.md` (where a real back end would plug in), `.gitignore` and tests. Data: `src/api/mock/data/report.json`,
+built from a results `report.html` by `scripts/import-report.py`. The importer also reads, from the pipeline:
+`hospitals.csv` beside `report.html` (street addresses), `data/hospitals.csv` (the 65 not checked, gray on the map),
+and for "Last updated" `runs/usage.csv`, `runs/{run_id}/{id}.json` and `data/cache/` (`assessed_dates`: the New York
+date each hospital's model reply arrived in the run the report took it from: ledger time, else when the cached reply
+was first saved, matched by model and token counts, else the run's start). Coordinates: the hand-checked
+`HOSPITAL_ADDRESSES` list in the script first (about 20, the collaborator's), else `scripts/hospital-locations.csv`
+from `scripts/geocode-hospitals.py` (US Census batch geocoder, run once Nov 14 with the owner's yes: sends street,
+city, state, zip under row numbers, no names or ids; add-only, so hand-added rows stick). Hospitals still without
+coordinates are written to `scripts/hospitals-without-coordinates.csv` at each import. `generated.json` is
+fictional demo data used only for the criteria list. `src/lib/grading.ts` grades the fictional data only; report hospitals show the published letter, and in dev a
+mismatch is only a console warning (`src/lib/grade-mismatch.ts`).
 
 Commands: `uv sync`, `uv run pytest`, `uv run hfal fetch|extract|tag|ask|grade|score|report|judge|doc-check|size-check|consistency-check|usage|monitor`.
+Published at <https://aayparekh.github.io/HFAL/> (GitHub Pages, Nov 14) by `.github/workflows/pages.yml` on each push
+to `main` touching `frontend/`: `npm ci`, tests, type check, `npm run build -- --base=/HFAL/`. So every front-end
+commit to `main` is published publicly within minutes; the banner still says "Not for public use".
+Front end (in `frontend/`): `npm install`, `npm run dev`, `npm test` (36 passing), `npm run typecheck`, `npm run build`;
+after each `hfal report`: `python3 scripts/import-report.py ../results/latest/report.html` (merges: hospitals in the
+new report are replaced, others kept), then update the totals in `src/api/mock/report.test.ts` and the banner.
 
 ## Known gaps (not yet done or never tested)
 
 - `ask.py` has run on the live API for a one-hospital run (v2) and 20 dev hospitals (v5, two random samples of 10:
-  judged, 98 of 119 disagreements hand-bucketed); v7 with Kimi K3 max on 77 of the 85 dev hospitals (Nov 12-13); the 47 eval hospitals are not asked yet.
+  judged, 98 of 119 disagreements hand-bucketed); v7 with Kimi K3 max on 77 of the 85 dev hospitals (Nov 12-13) and 29 of the 47 eval hospitals (Nov 13, chosen by
+  cost, not random: coverage, not the eval number; `final_run.py --set eval`). `results/latest/` is the combined
+  146-hospital report (`results/2026-11-14_kimi-k3-max_v7_all146/`, Nov 14): the 106 plus the 40 working hospitals
+  not yet asked (9 dev, 31 eval, most of them new through the browser, web-page-only rule and OCR; v7, Kimi K3 max,
+  $27.03, every file checked, quotes verified 632 of 633). Like the 29, the 31 eval are coverage, not an eval score.
   **Final run (done Nov 13):** Kimi K3 at max (preset `kimi-k3-max`, the pilot's model; changed from
   K3.1, whose quotes were paraphrased), v7, 40 non-pilot dev hospitals drawn at random, via `scripts/final_run.py`
   (the headline), plus a fill run of 22 dev hospitals chosen by cost (coverage only, not random): 77 of 85 dev
   hospitals asked. Opus judge on the 13 hospitals of a 20-row random sample of the 40's disagreements, for hand
   review (PLAN.md Day 3). The owner's review of the pilot is done (no wording change, so v7 stays).
-  `hfal monitor` has not run on the live sites, and no launchd schedule exists. `fetch.py` has run on real sites (eval and dev collected; PLAN.md Attrition).
+  `hfal monitor` was tested live with `--no-ask` on 24 dev hospitals in a throwaway copy (Nov 13, PLAN.md "Next"):
+  never yet run on the real `data/`, never with `ask`, and no launchd schedule exists. `fetch.py` has run on real sites (eval and dev collected; PLAN.md Attrition).
 - `config/criteria.yaml` and `config/criteria_columns.yaml` are GENERATED (`scripts/criteria_from_csv.py`) from
   `config/criteria_raw.csv` (CSSNY's Excel data dictionary) and `config/criteria_overrides.yaml` (section to
   doc_types, plus 9 question wordings and the Languages yes/no text I drafted; needs owner review). Ids are
@@ -275,9 +333,20 @@ Commands: `uv sync`, `uv run pytest`, `uv run hfal fetch|extract|tag|ask|grade|s
   (CSSNY's labels have no open items).
 - `scripts/seed_hospitals.py` + `hfal sources` give landing pages; `hfal discover` adds documents; scanned PDFs are
   OCR'd with Textract (Nov 12: 12 PDFs, 79 pages). Textract reads English, Spanish, French, German, Italian and
-  Portuguese only. Hospitals blocked by a bot check, with broken links, no link, or scans OCR could not read are
-  excluded on purpose, not worked around (PLAN.md "Scope rules"); the working set is `data/working_set.csv`.
-  robots.txt no longer excludes anyone (Nov 12, see Decisions): pages it disallows are fetched and marked.
+  Portuguese only. Hospitals with a CAPTCHA or a bot check the headless browser cannot pass, broken links, no link,
+  or scans OCR could not read are excluded on purpose (PLAN.md "Scope rules"); the working set is
+  `data/working_set.csv`. robots.txt no longer excludes anyone (Nov 12, see Decisions): pages it disallows are
+  fetched and marked. The browser fallback (Nov 14) is marked the same way.
+- Front end (`frontend/`): the branch arrived with the Nov 13 report (106 hospitals); the Nov 14 report was then
+  imported on `main` (owner, Nov 14): 146 hospitals, the 106 refreshed and 40 added, none dropped. "Last updated" is
+  each hospital's own run date (Nov 12: 25, Nov 13: 81, Nov 14: 40), not the report date. Map: 195 of 211 have
+  coordinates (132 of 146 checked, 63 of 65 gray); Census geocodes agreed with 18 hand-checked ones to within 0.5 km
+  except one (1.4 km). The other 16 need placing by hand (`hospitals-without-coordinates.csv`; add rows to
+  `hospital-locations.csv`). It reads a copy of the report, so it goes stale until `import-report.py` is re-run, and
+  `report.test.ts` and `demo-banner.tsx` hard-code the totals (146 + 65 hospitals, grade counts, dates, 195 mapped),
+  which must be updated with each import. Its criterion labels are matched to
+  `report.html` wording (`LABEL_TO_CODE`); an unmatched label is skipped silently, so renaming one in `report.py`
+  would quietly drop that criterion from the front end. Not reviewed for this repo's conventions; no CI.
 
 ## Task queue
 
