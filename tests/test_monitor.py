@@ -83,13 +83,56 @@ def test_diff_every_kind_of_change():
 
 
 def test_text_comparison_ignores_whitespace_and_urls(store):
-    write_text("aaaaaaaa", "Financial  assistance\n\npolicy")
-    write_text("cccccccc", "Financial assistance policy ")
+    write_text("aaaaaaaa", "Financial  assistance\n\n\tpolicy​")
+    write_text("cccccccc", "Financial assistance \npolicy ")
     k = lambda e: monitor.text_key("t1", e)  # noqa: E731
     before, after = [entry("u/one", "aaaaaaaa")], [entry("u/two", "cccccccc")]
     assert monitor.texts(before, k) == monitor.texts(after, k)
-    write_text("cccccccc", "Financial assistance policy, revised")
+    write_text("cccccccc", "Financial assistance\npolicy, revised")
     assert monitor.texts(before, k) != monitor.texts(after, k)
+
+
+def test_text_comparison_ignores_line_order_but_not_lost_lines(store):
+    write_text("aaaaaaaa", "Menu\nAbout us\nIncome up to 400% FPL")
+    write_text("cccccccc", "About us\nMenu\nIncome up to 400% FPL")
+    write_text("dddddddd", "About us\nMenu")
+    k = lambda e: monitor.text_key("t1", e)  # noqa: E731
+    assert k(entry("u", "aaaaaaaa")) == k(entry("u", "cccccccc")) != k(entry("u", "dddddddd"))
+
+
+def html(url, sha):
+    return {**entry(url, sha, label="discovered html"), "ext": "html"}
+
+
+def test_lines_on_most_html_pages_are_ignored(store):
+    """Menu lines on most of the site's pages are furniture; a change in the page's own text still counts."""
+    pages = {"u/a": "11111111", "u/b": "22222222", "u/c": "33333333"}
+    for url, sha in pages.items():
+        write_text(sha, f"Home\nPatients\nOwn text of {url}")
+    write_text("1a1a1a1a", "Patients\nOwn text of u/a")                     # menu line gone from page a
+    write_text("1b1b1b1b", "Home\nPatients\nOwn text of u/a, revised")     # page a's own text changed
+    write_text("1c1c1c1c", "Home\nPatients\nOwn text of u/a\nNew line")    # a line on page a only: not furniture
+    before = [html(u, s) for u, s in pages.items()]
+    for new_a, same in (("1a1a1a1a", True), ("1b1b1b1b", False), ("1c1c1c1c", False)):
+        after = [html("u/a", new_a)] + before[1:]
+        f = monitor.boilerplate("t1", before + after)
+        assert {"Home", "Patients"} <= f and not any(ln.startswith("Own text") for ln in f)
+        k = lambda e: monitor.text_key("t1", e, f)  # noqa: E731
+        assert (k(before[0]) == k(after[0])) is same
+
+
+def test_furniture_needs_three_html_pages_and_never_touches_pdfs(store):
+    write_text("11111111", "Home\nPolicy")
+    write_text("22222222", "Home\nSummary")
+    two = [html("u/a", "11111111"), html("u/b", "22222222")]
+    assert monitor.boilerplate("t1", two) == frozenset()
+    write_text("33333333", "Home\nApplication")
+    write_text("44444444", "Home\nPolicy PDF")
+    three = two + [html("u/c", "33333333"), entry("u/p.pdf", "44444444")]
+    f = monitor.boilerplate("t1", three)
+    assert f == {"Home"}                                              # the PDF is not counted as a page
+    write_text("45454545", "Policy PDF")                              # ... and its own "Home" line is kept
+    assert monitor.text_key("t1", three[3], f) != monitor.text_key("t1", entry("u/p.pdf", "45454545"), f)
 
 
 def test_baseline_is_the_last_manifest_before_today(store):

@@ -14,7 +14,12 @@ For each hospital, one at a time (so a failure touches one hospital only):
 What counts as a change. The model reads extracted text, so a hospital is "changed" when the texts it would be sent
 differ from the baseline's: a new document, a removed one, or one whose text changed. A file whose bytes changed but
 whose text did not (a landing page with a new session token, a PDF saved again), or the same file at a new address,
-is listed but does not lead to a new model call. Text is compared with runs of whitespace collapsed.
+is listed but does not lead to a new model call. Text is compared line by line, ignoring:
+  - whitespace inside a line, blank lines and invisible zero-width characters;
+  - line order (a menu whose items swap places is not a change);
+  - website furniture: on HTML pages only, lines found on more than half of the hospital's HTML pages (menus,
+    headers, footers; see boilerplate()). Needs at least 3 HTML pages; PDFs and Word files are never trimmed.
+This decides only whether to ask the model again. What the model is sent is not changed by it.
 
 Unreachable. A hospital that no longer passes the exclusion rule (landing page or a selected document blocked,
 broken or gone, or a scan OCR could not read; src/hfal/attrition.py) is reported as unreachable with its cause, and
@@ -76,16 +81,55 @@ def baseline(hid: str, today: str) -> tuple[str | None, list[dict]]:
     return None, []
 
 
-def text_key(hid: str, entry: dict) -> str | None:
-    """What the model is sent from one document: a hash of its extracted text (whitespace collapsed) with the
-    extractor stamp. None when the entry was not downloaded or has no text file (`ask` sends only extracted text)."""
+# A line on more than this share of a hospital's HTML pages is website furniture (menu, header, footer).
+BOILERPLATE_SHARE = 0.5
+# Fewer HTML pages than this: no line is treated as furniture (with 1 or 2 pages "most pages" means nothing).
+BOILERPLATE_MIN_PAGES = 3
+_INVISIBLE = re.compile("[​‌‍⁠﻿­]")
+
+
+def norm_lines(text: str) -> list[str]:
+    """The non-blank lines of a text, invisible characters removed and whitespace collapsed."""
+    lines = (re.sub(r"\s+", " ", _INVISIBLE.sub("", ln)).strip() for ln in text.splitlines())
+    return [ln for ln in lines if ln]
+
+
+def _doc(hid: str, entry: dict) -> dict | None:
     if entry.get("status") != "ok" or not entry.get("sha8"):
         return None
-    try:
-        doc = json.loads((paths.TEXT / hid / f"{entry['sha8']}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    return _read_json(paths.TEXT / hid / f"{entry['sha8']}.json")
+
+
+def _is_html(entry: dict) -> bool:
+    return entry.get("ext") == "html"
+
+
+def boilerplate(hid: str, entries: list[dict]) -> frozenset[str]:
+    """Lines found on more than BOILERPLATE_SHARE of the hospital's HTML pages, counting each URL once (its lines
+    before and now pooled, so a menu line that left the landing page still counts there). entries: the baseline
+    and today's manifests together. Empty below BOILERPLATE_MIN_PAGES pages."""
+    per_url: dict[str, set[str]] = {}
+    for e in entries:
+        doc = _doc(hid, e) if _is_html(e) else None
+        if doc is not None:
+            per_url.setdefault(e["url"], set()).update(norm_lines("\n".join(doc.get("pages", []))))
+    if len(per_url) < BOILERPLATE_MIN_PAGES:
+        return frozenset()
+    seen = Counter(ln for lines in per_url.values() for ln in lines)
+    return frozenset(ln for ln, n in seen.items() if n > BOILERPLATE_SHARE * len(per_url))
+
+
+def text_key(hid: str, entry: dict, furniture: frozenset[str] = frozenset()) -> str | None:
+    """What the model is sent from one document, for comparison: a hash of its extracted lines (normalised, sorted,
+    furniture removed on HTML pages) with the extractor stamp. None when the entry was not downloaded or has no text
+    file (`ask` sends only extracted text)."""
+    doc = _doc(hid, entry)
+    if doc is None:
         return None
-    text = re.sub(r"\s+", " ", "\n".join(doc.get("pages", []))).strip()
+    lines = norm_lines("\n".join(doc.get("pages", [])))
+    if _is_html(entry):
+        lines = [ln for ln in lines if ln not in furniture]
+    text = "\n".join(sorted(lines))
     return f"{doc.get('extractor', '')}:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
 
 
@@ -216,7 +260,8 @@ def check_hospital(h: dict, today: str) -> dict:
         return {**row, "status": "error", "cause": f"{type(e).__name__}: {e}"[:300], "documents_now": 0,
                 **{c: 0 for c in CHANGES}, "documents": []}
     after = full_manifest(hid)
-    key = lambda e: text_key(hid, e)     # noqa: E731
+    furniture = boilerplate(hid, before + after)
+    key = lambda e: text_key(hid, e, furniture)     # noqa: E731
     docs = diff_documents(before, after, key)
     ok_now, cat = evaluable(h, after, _read_json(disc_file))
     texts_now = texts(after, key)

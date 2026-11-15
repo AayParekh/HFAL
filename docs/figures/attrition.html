@@ -10,16 +10,17 @@
 -->
 <style>
 .viz-root{
-  --text-primary:#1d2433; --text-secondary:#52576a; --text-muted:#7a8091;
-  --series-1:#2a78d6; --axis:#c9cdd6; --lost:#8a90a0;
+  /* dark ink and larger type, to match the other slide charts (model_comparison.py, manual_checks.py) */
+  --text-primary:#0b0b0b; --text-secondary:#3a3936; --text-muted:#3a3936;
+  --series-1:#2a78d6; --axis:#a9a8a0; --lost:#6f6e69;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--text-primary)}
-body.render{zoom:2;width:1600px;height:690px;overflow:hidden}
+body.render{zoom:2;width:1600px;height:760px;overflow:hidden}
 .viz-root{width:1600px;padding:30px 48px 24px}
 svg{display:block;overflow:visible}
 svg text{font-family:inherit}
-.foot{font-size:14px;color:var(--text-secondary);margin-top:12px;line-height:1.45;max-width:1450px}
+.foot{font-size:17px;color:var(--text-secondary);margin-top:14px;line-height:1.45;max-width:1500px}
 #tip{position:fixed;pointer-events:none;background:#1d2433;color:#fff;font-size:13px;line-height:1.35;padding:7px 10px;
   border-radius:6px;opacity:0;transition:opacity .08s;max-width:340px}
 details{margin-top:14px;font-size:14px}
@@ -31,7 +32,7 @@ body.render .viz-root[hidden]{display:none}
 </style></head>
 <body>
 <div class="viz-root" id="combined">
-  <svg width="1504" height="550" role="img"
+  <svg width="1504" height="560" role="img"
        aria-label="Bar chart of hospitals left after each of six collection stages, all hospitals: 211 to 132."></svg>
   <div class="foot">
     A hospital stops at the first stage it fails; it is excluded and counted, never rescued by hand. Working set:
@@ -42,7 +43,7 @@ body.render .viz-root[hidden]{display:none}
   <details><summary>Table view</summary><table></table></details>
 </div>
 <div class="viz-root" id="split">
-  <svg width="1504" height="550" role="img"
+  <svg width="1504" height="560" role="img"
        aria-label="Bar chart of hospitals left after each of six collection stages. Dev: 94 to 85. Eval: 117 to 47."></svg>
   <div class="foot">
     A hospital stops at the first stage it fails; it is excluded and counted, never rescued by hand. Working set:
@@ -60,7 +61,7 @@ const STAGES = [
   ["In hospital table",          94, 117],
   ["Has a landing link",         90,  83, "no landing link", "no landing link"],
   ["Landing page fetched",       89,  80, "bot check / access denied", "landing page blocked or broken"],
-  ["Documents found",            85,  48, "2 bot check, 2 broken link or empty page", "bot check, moved site or empty page"],
+  ["Documents found",            85,  48, "2 bot check, 2 broken or empty", "bot check, moved site or empty page"],
   ["All documents downloaded",   85,  47, null, "a selected document did not download"],
   ["No scan left unread by OCR", 85,  47],
 ];
@@ -73,7 +74,7 @@ if (params.bg) {
 }
 
 const NS = "http://www.w3.org/2000/svg", tip = document.getElementById("tip");
-const LABEL_W = 262, TOP = 56, ROW = 78, BAR = 36, R = 4;
+const LABEL_W = 330, TOP = 60, ROW = 80, BAR = 40, R = 4;
 const bottom = TOP + STAGES.length * ROW - (ROW - BAR) / 2 + 8;
 
 function draw(rootId, panels, max, scaleW, tick) {
@@ -86,36 +87,36 @@ function draw(rootId, panels, max, scaleW, tick) {
 
   STAGES.forEach((s, i) => {
     const cy = TOP + i * ROW + BAR / 2, last = i === STAGES.length - 1;
-    el("text", {x: 0, y: cy + 6, "font-size": 17, fill: "var(--text-muted)", "font-weight": 600}, String(i + 1));
-    el("text", {x: 24, y: cy + (last ? -2 : 6), "font-size": 17, fill: "var(--text-primary)", "font-weight": last ? 700 : 500}, s[0]);
-    if (last) el("text", {x: 24, y: cy + 17, "font-size": 14, fill: "var(--text-secondary)", "font-weight": 600}, "= working set");
+    el("text", {x: 0, y: cy + 7, "font-size": 20, fill: "var(--text-muted)", "font-weight": 700}, String(i + 1));
+    el("text", {x: 28, y: cy + (last ? -2 : 7), "font-size": 20, fill: "var(--text-primary)", "font-weight": 700}, s[0]);
+    if (last) el("text", {x: 28, y: cy + 20, "font-size": 17, fill: "var(--text-secondary)", "font-weight": 600}, "= working set");
   });
 
   panels.forEach(p => {
     if (p.name) {
-      el("text", {x: p.x0, y: 18, "font-size": 21, "font-weight": 700, fill: "var(--text-primary)"}, p.name);
-      el("text", {x: p.x0 + p.noteX, y: 18, "font-size": 15, fill: "var(--text-secondary)"}, p.note);
+      el("text", {x: p.x0, y: 20, "font-size": 24, "font-weight": 700, fill: "var(--text-primary)"}, p.name);
+      el("text", {x: p.x0 + p.noteX, y: 20, "font-size": 17, fill: "var(--text-secondary)"}, p.note);
     }
     el("line", {x1: p.x0, x2: p.x0, y1: TOP - 10, y2: bottom, stroke: "var(--axis)", "stroke-width": 1.5});
     el("line", {x1: p.x0, x2: p.x0 + scaleW, y1: bottom, y2: bottom, stroke: "var(--axis)", "stroke-width": 1.5});
     for (let t = 0; t <= max; t += tick) {
       el("line", {x1: p.x0 + x(t), x2: p.x0 + x(t), y1: bottom, y2: bottom + 6, stroke: "var(--axis)", "stroke-width": 1.5});
-      el("text", {x: p.x0 + x(t), y: bottom + 22, "font-size": 13, fill: "var(--text-muted)", "text-anchor": "middle"}, t);
+      el("text", {x: p.x0 + x(t), y: bottom + 26, "font-size": 16, fill: "var(--text-muted)", "text-anchor": "middle"}, t);
     }
-    el("text", {x: p.x0 + scaleW + 14, y: bottom + 22, "font-size": 13, fill: "var(--text-muted)"}, "hospitals");
+    el("text", {x: p.x0 + scaleW + 18, y: bottom + 26, "font-size": 16, fill: "var(--text-muted)"}, "hospitals");
 
     STAGES.forEach((s, i) => {
       const v = p.value(s), prev = i ? p.value(STAGES[i - 1]) : v, lost = prev - v;
       const y = TOP + i * ROW, last = i === STAGES.length - 1, why = p.why(s), w = x(v);
       el("path", {d: `M${p.x0} ${y}H${p.x0 + w - R}Q${p.x0 + w} ${y} ${p.x0 + w} ${y + R}V${y + BAR - R}Q${p.x0 + w} ${y + BAR} ${p.x0 + w - R} ${y + BAR}H${p.x0}Z`,
                   fill: "var(--series-1)"});
-      el("text", {x: p.x0 + w - 10, y: y + BAR / 2 + 6, "font-size": last ? 18 : 16, "font-weight": 700, fill: "#fff", "text-anchor": "end"}, v);
+      el("text", {x: p.x0 + w - 10, y: y + BAR / 2 + 7, "font-size": last ? 22 : 20, "font-weight": 700, fill: "#fff", "text-anchor": "end"}, v);
       if (lost > 0) {   // lost here: hatched block from what is left up to the stage before, 2px gap
         el("rect", {x: p.x0 + w + 2, y: y + 1, width: Math.max(x(lost) - 2, 5), height: BAR - 2,
                     fill: `url(#hatch-${rootId})`, stroke: "var(--lost)", "stroke-width": 1, rx: 3});
         const lx = p.x0 + Math.max(x(prev), w + 7) + 10;
-        el("text", {x: lx, y: why ? y + 14 : y + BAR / 2 + 6, "font-size": 16, "font-weight": 700, fill: "var(--text-primary)"}, `−${lost}`);
-        if (why) el("text", {x: lx, y: y + 32, "font-size": 14, fill: "var(--text-secondary)"}, why);
+        el("text", {x: lx, y: why ? y + 15 : y + BAR / 2 + 7, "font-size": 20, "font-weight": 700, fill: "var(--text-primary)"}, `−${lost}`);
+        if (why) el("text", {x: lx, y: y + 38, "font-size": 17, fill: "var(--text-secondary)"}, why);
       }
       const hit = el("rect", {x: p.x0, y: y - 8, width: p.w, height: BAR + 16, fill: "transparent"});
       hit.addEventListener("mousemove", e => {
@@ -141,8 +142,8 @@ draw("combined", [{x0: LABEL_W, w: 1504 - LABEL_W, value: s => s[1] + s[2], why:
 // dev and eval side by side
 const GAP = 64, PANEL_W = (1504 - LABEL_W - GAP) / 2;
 draw("split", [
-  {name: "Dev set", note: "used to improve the pipeline", noteX: 82, x0: LABEL_W, w: PANEL_W, value: s => s[1], why: s => s[3]},
-  {name: "Eval set", note: "held back, measured only", noteX: 86, x0: LABEL_W + PANEL_W + GAP, w: PANEL_W, value: s => s[2], why: () => null},
-], 120, 470, 30);
+  {name: "Dev set", note: "used to improve the pipeline", noteX: 96, x0: LABEL_W, w: PANEL_W, value: s => s[1], why: s => s[3]},
+  {name: "Eval set", note: "held back, measured only", noteX: 100, x0: LABEL_W + PANEL_W + GAP, w: PANEL_W, value: s => s[2], why: () => null},
+], 120, 420, 30);
 </script>
 </body></html>

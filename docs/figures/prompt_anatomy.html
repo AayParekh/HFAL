@@ -1,0 +1,118 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Anatomy of a prompt</title>
+<!--
+  What the model is sent for one hospital (prompt v7), shortened, with the parts that matter most marked and explained.
+  Instruction, reading-rule and criterion wording is copied from src/hfal/ask.py (SYSTEM, build_prompt,
+  format_criterion), src/hfal/consistency.py and config/criteria_overrides_v7.yaml (criterion Y), cut where marked ⋯.
+  No hospital is shown: the document and the reply are outlines with ⋯ in place of a hospital's text (no CSSNY data).
+  render.sh adds #bg=ffffff / #bg=000000, which transparent.py turns into one transparent PNG.
+-->
+<style>
+:root{--ink:#1b2232;--muted:#5a6377;--faint:#8a93a6;--blue:#1d63c9;--violet:#6a3fc4;--green:#13804f;--amber:#b26205}
+*{box-sizing:border-box;margin:0;padding:0}
+html{zoom:2}
+body{width:1920px;height:1080px;background:#fff;color:var(--ink);overflow:hidden;display:flex;flex-direction:column;
+  font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;padding:38px 64px 30px}
+h1{font-size:40px;letter-spacing:-.8px;font-weight:750;line-height:1.1}
+.sub{font-size:20px;color:var(--muted);margin-top:6px}
+
+.rows{display:grid;grid-template-columns:1150px 1fr;column-gap:34px;row-gap:16px;margin:auto 0}
+.panel{border-radius:14px;background:var(--bg);border-left:8px solid var(--c);padding:10px 20px 12px;overflow:hidden}
+.head{font-size:17px;font-weight:700;color:var(--c);margin-bottom:6px;display:flex;gap:14px;align-items:baseline}
+.head span{font-weight:500;color:var(--muted);font-size:15px}
+pre{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13.4px;line-height:1.44;white-space:pre-wrap;color:#2b3345}
+.cut{color:var(--faint);font-style:italic}
+.tag{color:var(--faint)}
+mark{background:var(--hl);color:inherit;border-radius:3px;padding:1px 2px;box-shadow:0 0 0 1.5px var(--c) inset}
+.pin{display:inline-flex;width:21px;height:21px;border-radius:50%;background:var(--c);color:#fff;font:700 12.5px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;
+  align-items:center;justify-content:center;vertical-align:1px;margin:0 2px 0 4px}
+.ok{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:13.5px;font-weight:650;color:var(--green);
+  background:#fff;border:1.5px solid var(--green);border-radius:20px;padding:1px 9px;margin-left:6px;white-space:nowrap}
+
+.notes{display:flex;flex-direction:column;justify-content:center;gap:11px}
+.note{display:grid;grid-template-columns:30px 1fr;column-gap:10px;font-size:16.5px;line-height:1.36;color:#333b4d}
+.note .pin{width:28px;height:28px;font-size:15px;margin:0}
+.note b{color:var(--ink)}
+
+.s1{--c:var(--violet);--bg:#f6f3fd;--hl:#e6ddfb}
+.s2{--c:var(--blue);--bg:#f0f5fd;--hl:#d8e6fb}
+.s3{--c:var(--green);--bg:#eef8f2;--hl:#d3efdf}
+
+.small{font-size:13.5px;color:var(--muted);line-height:1.4;}
+</style></head>
+<body>
+<h1>Anatomy of a prompt</h1>
+<div class="sub">What the AI receives for one hospital, and what it must send back. Shortened to fit; ⋯ marks a cut.</div>
+
+<div class="rows">
+
+  <!-- 1. The same for every hospital -->
+  <div class="panel s1">
+    <div class="head">① Instructions <span>the same for every hospital</span></div>
+<pre>You audit a New York hospital's financial assistance materials against specific criteria.
+- <mark>Use ONLY the documents provided. Never use outside knowledge about the hospital or the law.</mark><span class="pin">1</span>
+- For each criterion answer exactly one of: <mark>YES, NO, N/A, UNCLEAR, NOT_FOUND.</mark><span class="pin">2</span>
+- <mark>YES or NO requires a quote copied EXACTLY, character for character, from one document.</mark><span class="pin">3</span>
+- NOT_FOUND means ⋯ not among the documents provided. <mark>Do not answer NO merely because you could not find something.</mark><span class="pin">2</span>
+- UNCLEAR means the text is ambiguous, contradictory, or you are unsure. <mark>Prefer UNCLEAR to guessing.</mark><span class="pin">2</span>
+<span class="cut">⋯ two lists to report (languages, counties) · nine points on which the documents must agree</span>
+How to read the documents (these apply to every criterion):
+- <mark>⋯ Use the most recent, judged by dates in the text (effective date, revision date, a year in a title).</mark><span class="pin">4</span>
+<span class="cut">⋯ 11 more rules: health-system documents, physician groups, translations, blank forms, NOT_FOUND versus NO</span>
+<mark>&lt;reference_form name="New York State Uniform Hospital Financial Assistance Application, blank, 2025"&gt;</mark><span class="pin">5</span> <span class="cut">⋯ the whole blank state form</span>
+<mark>&lt;reference_fpl name="Official federal poverty guidelines ⋯"&gt;</mark><span class="pin">5</span> <span class="cut">2025 and 2026: household size | 100% | 200% | 300% | 400% ⋯</span></pre>
+  </div>
+  <div class="notes s1">
+    <div class="note"><span class="pin">1</span><div><b>Documents only.</b> Answers come from what the hospital posted, never from what the AI thinks it knows.</div></div>
+    <div class="note"><span class="pin">2</span><div><b>Five possible answers.</b> “Not found” is never a failure, and when unsure the AI must say “unclear” rather than guess. A person looks at both.</div></div>
+    <div class="note"><span class="pin">3</span><div><b>Every YES or NO needs an exact quote</b>, so software can check it afterwards (see 8).</div></div>
+    <div class="note"><span class="pin">4</span><div><b>Reading rules</b> settle the hard cases the same way for every hospital: old versions, shared health-system policies, translations.</div></div>
+    <div class="note"><span class="pin">5</span><div><b>Reference copies</b> of the state's blank application and the official poverty figures, to compare against. Never quoted as evidence.</div></div>
+  </div>
+
+  <!-- 2. This hospital -->
+  <div class="panel s2">
+    <div class="head">② This hospital <span>changes for each hospital · every collected document, in full</span></div>
+<pre><mark>&lt;document id="⋯" url="⋯" types="⋯"&gt;</mark><span class="pin">6</span> <mark>[[page 1]]</mark><span class="pin">6</span> <span class="cut">⋯ every page, in full ⋯</span> &lt;/document&gt;
+<span class="cut">⋯ the policy, the plain-language summary, the application, the web pages: every document collected</span>
+
+Criteria (answer every one):
+- <mark>no_evidence_of_asset_checks: Is there no evidence of asset checks (for example, a request for bank account statements)?</mark><span class="pin">7</span>
+    Checks (work through them in order and write each result in your reason, e.g. "A: yes - ..."):
+      A. Does any document ask the patient for information about assets, such as bank or savings account statements ⋯?
+      B. Does any document say that assets are counted when deciding eligibility?
+    <mark>YES means:</mark><span class="pin">7</span> no document asks for or counts assets. Proof of income (pay stubs, tax returns ⋯) is not an asset check.
+    <mark>NO means:</mark><span class="pin">7</span> a document asks for assets or counts them, for example by requesting bank account statements ⋯
+<span class="cut">⋯ 17 more questions, each with its own checks and its own YES and NO</span></pre>
+  </div>
+  <div class="notes s2">
+    <div class="note"><span class="pin">6</span><div><b>The whole document, with its web address and page numbers.</b> Nothing is excerpted or cut, and every finding can link to the exact page.</div></div>
+    <div class="note"><span class="pin">7</span><div><b>18 questions, written as a rubric.</b> Step-by-step checks and a definition of YES and of NO, so the AI shows its work and every hospital is held to the same reading.</div></div>
+  </div>
+
+  <!-- 3. The reply -->
+  <div class="panel s3">
+    <div class="head">③ The AI's reply <span>in a fixed format, then checked by software</span></div>
+<pre>{"answers": [
+  {"criterion_id": "no_evidence_of_asset_checks", "answer": "NO",
+   "quote": "<mark><span class="cut">⋯ words copied exactly from one document ⋯</span></mark>"<span class="pin">8</span><span class="ok">✓ checked word for word</span>
+   "source_doc": "⋯", "page": ⋯,
+   "reason": "A: ⋯ B: ⋯"},
+  <span class="cut">⋯ 17 more answers</span> ],
+ <mark>"languages": [⋯], "psa_counties": [⋯]</mark><span class="pin">9</span>, "consistency_points": [<span class="cut">⋯ nine points, two quotes each</span>]}</pre>
+  </div>
+  <div class="notes s3">
+    <div class="note"><span class="pin">8</span><div><b>Fact-checked by software.</b> If the quote is not word for word in the cited document, the answer becomes “unclear” and goes to a person.</div></div>
+    <div class="note"><span class="pin">9</span><div><b>Reported, not graded:</b> languages offered and counties served, each with its own checked quote.</div></div>
+    <div class="small">The instructions and the question are the real wording (prompt v7), shortened.</div>
+  </div>
+
+</div>
+
+<script>
+  // #bg=RRGGBB paints the page background (render.sh shoots it on white and on black; transparent.py makes one PNG).
+  var params = {};
+  (location.hash || "").replace("#", "").split("&").forEach(function (kv) { var p = kv.split("="); if (p[0]) params[p[0]] = p[1]; });
+  if (params.bg) document.body.style.background = "#" + params.bg;
+</script>
+</body></html>

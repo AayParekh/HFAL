@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Who reads the prompts</title>
+<!--
+  Privacy by hosting route: the first three rows of the comparison made on Nov 13 (Kimi on Bedrock, Claude on
+  Anthropic's API, Claude on Bedrock). Policies as of Nov 2026, from AWS's Kimi K3 / K3.1 launch posts and Bedrock's
+  data-use page, and from third-party summaries of Anthropic's retention terms. Check the providers' own pages before
+  quoting this formally. No hospital or CSSNY data.
+  A tick always means "protects our data". render.sh adds #bg=ffffff / #bg=000000, which transparent.py turns into
+  one transparent PNG.
+-->
+<style>
+:root{--ink:#1b2232;--muted:#5a6377;--faint:#8a93a6;--line:#d9dee8;--green:#13804f;--red:#c0392b;--amber:#b26205}
+*{box-sizing:border-box;margin:0;padding:0}
+html{zoom:2}
+body{width:1920px;height:1080px;background:#fff;color:var(--ink);overflow:hidden;display:flex;flex-direction:column;
+  font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;padding:54px 80px 40px}
+h1{font-size:46px;letter-spacing:-.9px;font-weight:750;line-height:1.1}
+.sub{font-size:23px;color:var(--muted);margin-top:10px}
+
+.grid{display:grid;grid-template-columns:480px repeat(3,1fr);margin:70px 0 auto;border-top:2px solid var(--ink)}
+.grid>div{border-bottom:1.5px solid var(--line);padding:26px 26px}
+.colhead{font-size:24px;font-weight:700;line-height:1.25;padding-top:22px!important;padding-bottom:20px!important;
+  border-bottom:2px solid var(--ink)!important}
+.colhead span{display:block;font-size:18px;font-weight:500;color:var(--muted);margin-top:4px}
+.route{display:flex;flex-direction:column;justify-content:center}
+.route b{font-size:30px;font-weight:720;letter-spacing:-.4px;line-height:1.15}
+.route i{font-style:normal;font-size:20px;color:var(--muted);margin-top:6px}
+.route .used{display:inline-block;margin-top:10px;font-size:16px;font-weight:650;border-radius:20px;padding:3px 12px;
+  border:1.5px solid var(--c);color:var(--c);align-self:flex-start}
+.cell{display:grid;grid-template-columns:62px 1fr;column-gap:16px;align-items:center}
+.cell p{font-size:21px;line-height:1.3}
+.cell p small{display:block;font-size:16.5px;color:var(--muted);margin-top:4px;line-height:1.3}
+svg.mark{width:54px;height:54px}
+.foot{display:flex;justify-content:space-between;gap:40px;font-size:16px;color:var(--faint);line-height:1.4}
+.legend{display:flex;gap:30px;align-items:center;color:var(--muted);font-size:18px;white-space:nowrap}
+.legend span{display:flex;align-items:center;gap:8px}
+.legend svg{width:26px;height:26px}
+</style></head>
+<body>
+<h1>Who can read what we send to the model?</h1>
+<p class="sub">It depends on who runs the model, not on which model it is. On Amazon Bedrock, the company that made the model never sees our prompts.</p>
+
+<div class="grid" id="grid"></div>
+
+<div class="foot">
+  <p>* Bedrock's abuse checks can keep some traffic up to 30 days for certain models; the model maker still gets none of it.<br>
+     Policies as of November 2026: AWS's Kimi K3 and K3.1 launch posts and Bedrock data-use page; Anthropic's commercial terms (via third-party summaries).</p>
+  <div class="legend"><span><i id="lg-yes"></i>protects our data</span><span><i id="lg-no"></i>does not</span></div>
+</div>
+
+<script>
+const params = Object.fromEntries(location.hash.replace("#", "").split("&").filter(Boolean).map(s => s.split("=")));
+if (params.bg) document.body.style.background = "#" + params.bg;   // render.sh: shot on white and on black
+
+const MARK = {
+  yes: '<svg class="mark" viewBox="0 0 54 54"><circle cx="27" cy="27" r="25" fill="var(--green)"/>' +
+       '<path d="M15 28l8 8 16-17" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  no:  '<svg class="mark" viewBox="0 0 54 54"><circle cx="27" cy="27" r="25" fill="var(--red)"/>' +
+       '<path d="M18 18l18 18M36 18L18 36" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/></svg>',
+};
+const COLS = [
+  ["Model maker never sees prompts", "Moonshot for Kimi, Anthropic for Claude"],
+  ["Not kept after the answer", "How long the host stores prompts"],
+  ["Not used to train models", "Under the terms we use"],
+];
+const ROWS = [
+  {route: "Kimi K3 on Amazon Bedrock", who: "Read by: AWS only", used: "Used for asking the model", c: "var(--green)", cells: [
+    ["yes", "Moonshot gets nothing", "The model runs in an AWS-owned account"],
+    ["yes", "Not stored*", "Logging is off unless we turn it on"],
+    ["yes", "Not used for training", "AWS's stated commitment for Kimi"]]},
+  {route: "Claude on Anthropic's API", who: "Read by: Anthropic", used: "Used for asking (Sonnet) and the judge (Opus)", c: "var(--amber)", cells: [
+    ["no", "Anthropic receives the prompts", "It is both the maker and the host"],
+    ["no", "Kept 30 days, then deleted", "Longer only for flagged misuse or if the law requires it"],
+    ["yes", "Not used for training", "Commercial terms forbid it"]]},
+  {route: "Claude on Amazon Bedrock", who: "Read by: AWS only", used: "Not used in this project", c: "var(--faint)", cells: [
+    ["yes", "Anthropic gets nothing", "Same setup as Kimi on Bedrock"],
+    ["yes", "Not stored*", "Same Bedrock rules"],
+    ["yes", "Not used for training", "Same Bedrock rules"]]},
+];
+
+const grid = document.getElementById("grid");
+let html = '<div class="colhead"></div>' + COLS.map(([t, s]) => `<div class="colhead">${t}<span>${s}</span></div>`).join("");
+for (const r of ROWS) {
+  html += `<div class="route"><b>${r.route}</b><i>${r.who}</i><span class="used" style="--c:${r.c}">${r.used}</span></div>`;
+  html += r.cells.map(([m, t, s]) => `<div class="cell">${MARK[m]}<p>${t}<small>${s}</small></p></div>`).join("");
+}
+grid.innerHTML = html;
+document.getElementById("lg-yes").innerHTML = MARK.yes;
+document.getElementById("lg-no").innerHTML = MARK.no;
+</script>
+</body></html>
