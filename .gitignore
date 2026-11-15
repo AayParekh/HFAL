@@ -54,3 +54,6 @@ data/monitor/
 
 # Working notes and task log: kept on the owner's machine, not in the repository (decided Nov 13)
 PLAN.md
+
+# Experiment: starting pages found by web search (hospital ids of the sample; scripts/find_landing.py)
+data/found_landing/

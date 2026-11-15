@@ -170,6 +170,14 @@ fetch:
   # anyway and marked robots_disallowed in the manifest, so attrition and `hfal report` say which ones. Bot checks
   # (401/403/429) are still not worked around. true: a disallowed URL is not fetched and excludes the hospital.
   respect_robots: false
+  # Since Nov 14 (owner's decision): a headless Chromium (Playwright, src/hfal/browser.py) retries what plain HTTP
+  # could not read: a blocked or failed download, a landing page with no links (built by JavaScript), and, in
+  # discovery, a crawl that found no PDF or Word document. Its user agent is the browser's own ("HeadlessChrome")
+  # plus ours; it never solves a CAPTCHA (that hospital stays excluded as a bot check). What it collects is marked
+  # fetched_with_browser / browser and reported. false: plain HTTP only, as before Nov 14.
+  # One-time setup: uv run playwright install chromium
+  browser_fallback: true
+  browser_settle_ms: 5000     # after the page loads, wait up to this long for its scripts to finish loading
 
 # The form check (src/hfal/formcheck.py), for the criterion entire_uniform_application. Code measures how much of
 # the state form's wording a hospital document contains (4-word windows; the poverty table's figures are ignored).

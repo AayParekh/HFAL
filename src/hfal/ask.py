@@ -537,8 +537,10 @@ def load_documents(hospital_id: str) -> list[dict]:
     from .fetch import latest_manifest
 
     current: dict[str, bool] = {}       # sha8 -> fetched although robots.txt disallows it
+    browser: dict[str, bool] = {}       # sha8 -> fetched with the headless browser (since Nov 14)
     for i in latest_manifest(hospital_id):
         current[i["sha8"]] = current.get(i["sha8"], False) or bool(i.get("robots_disallowed"))
+        browser[i["sha8"]] = browser.get(i["sha8"], False) or bool(i.get("fetched_with_browser"))
     tags_file = paths.TAGS / f"{hospital_id}.json"
     tags = json.loads(tags_file.read_text(encoding="utf-8")) if tags_file.exists() else {}
     docs = []
@@ -548,6 +550,7 @@ def load_documents(hospital_id: str) -> list[dict]:
         d = json.loads(f.read_text(encoding="utf-8"))
         d["types"] = tags.get(d["sha8"], {}).get("types", [])
         d["robots_disallowed"] = current[f.stem]
+        d["fetched_with_browser"] = browser[f.stem]
         docs.append(d)
     return docs
 
@@ -689,7 +692,8 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
         "prompt_chars": prompt_chars,     # input size, for the error-rate-by-prompt-size analysis
         "documents": [{"sha8": d["sha8"], "url": d["source_url"], "types": d["types"],
                        "needs_ocr": d["needs_ocr"], "ocr": bool(d.get("ocr")),
-                       "robots_disallowed": bool(d.get("robots_disallowed"))} for d in docs],
+                       "robots_disallowed": bool(d.get("robots_disallowed")),
+                       "fetched_with_browser": bool(d.get("fetched_with_browser"))} for d in docs],
         "answers": list(answers.values()),
         "form_check": form_check,
         "fpl_check": fpl_check,

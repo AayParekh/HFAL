@@ -55,10 +55,11 @@ not the state's complete uniform application (an automatic F).
 
 ## Results so far
 
-- **Coverage.** Of CSSNY's 211 hospitals, 132 can be checked automatically. The others have no link in CSSNY's
-  review (38), a broken link or empty page (36), or block automated visitors (5); these are left for a person rather
-  than worked around. The 132 are split, at random, into 85 hospitals used to build and tune the tool and 47 held
-  back to test it honestly later. **77 of the 85 have been checked so far.**
+- **Coverage.** Of CSSNY's 211 hospitals, 146 can be checked automatically. Most of the others have no link in
+  CSSNY's review (38) or a page where nothing could be found; 11 (the NYC Health + Hospitals sites) show a "prove you
+  are human" puzzle, which the tool never solves. These are left for a person rather than worked around. The 146 are
+  split, at random, into 86 hospitals used to build and tune the tool and 60 held back to test it honestly later.
+  **77 of the 86 have been checked so far.**
 - **Agreement with CSSNY's review.** On 40 hospitals drawn at random, the tool's answers match CSSNY's September 2025
   answers on **79%** of the questions, and it gives the same letter grade for **28 of 40** hospitals (within one letter
   for 33).
@@ -93,6 +94,9 @@ at random, so its grades are not a statewide picture. Earlier reports are kept i
 - **Some websites ask automated tools not to collect certain pages** (a file called robots.txt). The project decided
   to collect them anyway, at its normal slow pace and under an honest name; the report marks every hospital and
   quotation where this happened.
+- **Some pages only appear in a full web browser** (they are built by scripts). Since November 14 the tool opens those
+  in an automated browser that says it is automated; the report marks every hospital and quotation collected this
+  way.
 - **The plain-language explanations are a first draft.**
 
 ## Data and privacy

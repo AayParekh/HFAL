@@ -6,7 +6,9 @@ Exclusion policy (PLAN.md): a hospital is left out, not worked around, when any 
   - robots.txt forbids fetching its landing page or one of its selected documents, but only while
     fetch.respect_robots is true. Since Nov 12 it is false: such pages and documents are fetched anyway, the
     hospital stays in, and the table counts the hospitals collected that way (column robots_txt_ignored)
-  - a bot check / access-denied response (401, 403, 429, or a landing page that serves no links)
+  - a bot check / access-denied response (401, 403, 429, or a landing page that serves no links). Since Nov 14 a
+    headless browser retries these first (fetch.browser_fallback); a CAPTCHA still excludes the hospital, and the
+    table counts working hospitals with something collected by the browser (column collected_with_browser)
   - a broken link: its landing page or a selected document does not download, or nothing is found there
   - a selected document is a scan that OCR could not read (OCR off, Textract failed, or too little text; since
     Nov 12 `hfal extract` OCRs scans with Amazon Textract, so a scan alone no longer excludes a hospital)
@@ -16,7 +18,8 @@ Stages, in order (a hospital stops at the first one it fails):
   1. in the hospital table (data/hospitals.csv), by set (dev / eval)
   2. has a landing_url
   3. landing page fetched
-  4. documents found (discovery selected at least one PDF / Word document)
+  4. documents found (discovery selected at least one PDF / Word document; since Nov 14, or failing that at
+     least one web page besides the landing page: hfal.attrition.required_documents)
   5. all selected documents downloaded
   6. no selected document is a scan left unread by OCR
   7. not excluded by hand (data/exclusions.yaml, git-ignored)            <- the working set
@@ -40,7 +43,7 @@ import yaml
 
 from hfal import paths
 from hfal.attrition import (CATEGORY_TEXT, STAGES, WORKING_STAGE, classify, failure_category,  # noqa: F401
-                            full_manifest, ocr_flags, robots_ignored, worst)
+                            browser_used, full_manifest, ocr_flags, robots_ignored, worst)
 from hfal.grade import grade_hospital
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +56,14 @@ def robots_line(rows: list[dict]) -> str:
     n = {s: sum(r["set"] == s and r["robots_txt_ignored"] == "yes" and r["stages_passed"] >= WORKING_STAGE
                 for r in rows) for s in ("dev", "eval")}
     return (f"Working set collected despite robots.txt (`fetch.respect_robots: false`, since Nov 12): "
+            f"{n['dev']} dev, {n['eval']} eval.")
+
+
+def browser_line(rows: list[dict]) -> str:
+    """The second line under the table: working hospitals with something collected by the headless browser."""
+    n = {s: sum(r["set"] == s and r.get("collected_with_browser") == "yes" and r["stages_passed"] >= WORKING_STAGE
+                for r in rows) for s in ("dev", "eval")}
+    return (f"Working set collected with a headless browser (`fetch.browser_fallback: true`, since Nov 14): "
             f"{n['dev']} dev, {n['eval']} eval.")
 
 
@@ -95,7 +106,8 @@ def main() -> int:
         passed, cat = classify(h, entries, disc, ocr, excluded, outcome)
         rows.append({"hospital_id": hid, "set": h.get("set", ""), "stages_passed": passed,
                      "last_stage": STAGES[passed - 1], "stopped_because": CATEGORY_TEXT.get(cat, ""),
-                     "category": cat, "robots_txt_ignored": "yes" if robots_ignored(entries, disc) else ""})
+                     "category": cat, "robots_txt_ignored": "yes" if robots_ignored(entries, disc) else "",
+                     "collected_with_browser": "yes" if browser_used(entries, disc) else ""})
 
     with open(paths.DATA / "attrition.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
@@ -117,6 +129,8 @@ def main() -> int:
         lines.append(f"| {i + 1}. {STAGES[i]} | {dev_left} | {why} | {eval_left} |")
     lines.append("")
     lines.append(robots_line(rows))
+    lines.append("")
+    lines.append(browser_line(rows))
     table_md = "\n".join(lines)
     print(table_md)
     print(f"working set: {sum(r['set'] == 'dev' for r in working)} dev, {sum(r['set'] == 'eval' for r in working)} eval"

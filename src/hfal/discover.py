@@ -46,6 +46,7 @@ FOLLOW_MIN_SCORE = 3   # a link must have a strong keyword to be followed
 PDF_MIN_SCORE = 3
 LANDING_LABEL = "HFA landing page"
 DISCOVERED_LABEL = "discovered"
+BROWSER_SUFFIX = " (browser)"   # sources.csv label suffix: fetch this page with the headless browser
 
 STRONG = [r"financial[ -]?(assistance|aid)", r"charity[ -]?care", r"sliding[ -]?(fee|scale)",
           r"uniform[ -]?(financial|application)", r"hospital[ -]?financial[ -]?assistance", r"\bhfa\b", r"\bfap\b",
@@ -389,7 +390,10 @@ def update_sources(results: dict[str, dict]) -> int:
     for hid in sorted(results):
         for c in results[hid]["candidates"]:
             if c["selected"] and (hid, c["url"]) not in have:
-                new.append({"hospital_id": hid, "url": c["url"], "label": f"{DISCOVERED_LABEL} {c['kind']}"})
+                # A web page found by the browser is fetched by the browser too: plain HTTP would get the page
+                # before its scripts fill it in.
+                label = f"{DISCOVERED_LABEL} {c['kind']}" + (BROWSER_SUFFIX if c.get("via_browser") and c["kind"] == "html" else "")
+                new.append({"hospital_id": hid, "url": c["url"], "label": label})
                 have.add((hid, c["url"]))
     with open(src, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["hospital_id", "url", "label"], extrasaction="ignore", lineterminator="\n")
@@ -419,8 +423,17 @@ def load_hospitals() -> dict[str, dict]:
         return {r["hospital_id"]: r for r in csv.DictReader(fh)}
 
 
+def n_docs(res: dict) -> int:
+    """Selected PDF and Word documents in a select() result."""
+    return sum(c["selected"] and c["kind"] in ("pdf", "docx") for c in res["candidates"])
+
+
+def n_selected(res: dict) -> int:
+    return sum(c["selected"] for c in res["candidates"])
+
+
 def discover_all(only: set[str] | None = None) -> None:
-    from .fetch import Robots, make_client
+    from .fetch import Robots, _make_browser, _Null, make_client
 
     cfg = paths.settings()["fetch"]
     out_dir = paths.DATA / "discovered"
@@ -429,7 +442,8 @@ def discover_all(only: set[str] | None = None) -> None:
     hospitals = load_hospitals()
     if not hospitals:
         print("note: data/hospitals.csv missing; health-system name filter is off")
-    with make_client(cfg["timeout_seconds"]) as client:
+    browser = _make_browser(cfg)
+    with make_client(cfg["timeout_seconds"]) as client, (browser or _Null()):
         robots = Robots(client)
         ignored: list[str] = []     # pages fetched although robots.txt disallows them (respect_robots: false)
 
@@ -444,6 +458,18 @@ def discover_all(only: set[str] | None = None) -> None:
             except Exception as e:  # network errors are recorded, never fatal
                 return f"error: {type(e).__name__}", "", b""
             return r.status_code, r.headers.get("content-type", ""), r.content
+
+        def bget(url):
+            """The same request through the headless browser (fetch.browser_fallback)."""
+            if not robots.allowed(url):
+                if cfg["respect_robots"]:
+                    return "robots_disallowed", "", b""
+                ignored.append(url)
+            time.sleep(cfg["delay_seconds"])
+            try:
+                return browser.get(url)
+            except Exception as e:  # never fatal, as for plain requests
+                return f"error: {type(e).__name__}", "", b""
 
         for hid, landings in sorted(_landing_rows(only).items()):
             merged = {"pages": [], "candidates": []}
@@ -460,9 +486,27 @@ def discover_all(only: set[str] | None = None) -> None:
                 c = crawl(landing, live)
                 merged["pages"] += c["pages"]
                 merged["candidates"] += c["candidates"]
-            res = select(merged, landings[0], name_filter(hid, hospitals))
+            nf = name_filter(hid, hospitals)
+            res = select(merged, landings[0], nf)
+            browser_note = {"tried": False}
+            if browser is not None and n_docs(res) == 0:
+                # Plain HTTP found no PDF or Word document: crawl again, rendering every page in the browser
+                # (pages built by JavaScript, bot checks that a real browser passes without a CAPTCHA).
+                bmerged = {"pages": [], "candidates": []}
+                for landing in landings:
+                    c = crawl(landing, bget)
+                    bmerged["pages"] += c["pages"]
+                    bmerged["candidates"] += c["candidates"]
+                bres = select(bmerged, landings[0], nf)
+                used = n_docs(bres) > 0 or (n_selected(res) == 0 and n_selected(bres) > 0)
+                browser_note = {"tried": True, "used": used, "plain_docs": 0, "browser_docs": n_docs(bres),
+                                "browser_pages_visited": bres["pages_visited"]}
+                if used:
+                    for cand in bres["candidates"]:
+                        cand["via_browser"] = True
+                    res = bres
             res.update(hospital_id=hid, landing=landings, warnings=warnings,
-                       robots_txt_ignored=sorted(set(ignored)),
+                       robots_txt_ignored=sorted(set(ignored)), browser=browser_note,
                        discovered_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
             (out_dir / f"{hid}.json").write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
             results[hid] = res

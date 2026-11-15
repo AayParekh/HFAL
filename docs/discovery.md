@@ -20,6 +20,10 @@ are fixed in code: no model, no golden labels. Every decision is recorded with i
 5. **Drop other hospitals' documents** (health-system pages list every member's documents). See below.
 6. **Score** what is left with the keyword lists below. A document needs a score of at least 3. The best 12
    documents and the best 3 extra HTML pages per hospital are kept.
+7. **Browser (since Nov 14).** If steps 1-6 selected no PDF or Word document, the whole crawl is repeated in a
+   headless browser (pages built by JavaScript; `fetch.browser_fallback`). Same rules, same limits. Its result is kept
+   when it selects a document, or a web page where the plain crawl selected nothing; the record says so under
+   `browser`. A CAPTCHA is never solved.
 
 ## Keywords and why
 
@@ -71,6 +75,8 @@ Hospital IDs are left out on purpose (they would reveal the sample); the review 
 | Ordinary words excluded from name matching | `west` matched a Manhattan hospital's name, `heart`, `department` |
 | Script detection and 3-letter language codes; `fas` excluded | Translations marked only by script or `_spa_` / `-ben_` codes; `FAS` = financial assistance summary |
 | `fa`, `hfal` keywords | File names such as `xx-fa-summary-2025` and `nys_uniformhfal_xx` |
+| Headless-browser crawl when plain HTTP selects no document (Nov 14, owner) | Not a keyword change. Decided by the owner on coverage; the trigger is general, not tuned on any hospital. On the 41 hospitals excluded as blocked or broken (mostly eval, so no rule was adjusted from them), 8 got documents only through the browser |
+| A hospital with selected web pages but no PDF counts (attrition, Nov 14, owner) | Dev runs: 135 of 1,030 verified YES/NO answers in the v7 dev runs quote a web page, in 51 of 62 dev hospitals |
 
 ## How to check it
 

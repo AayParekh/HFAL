@@ -6,10 +6,12 @@ Writes to results/{today}/ and copies the same files to results/latest/, the fix
 TRACKED in git (decided Nov 11): our own results may name hospitals, but nothing here may come from CSSNY's labels
 (no golden label, no judge or review data, no corrected labels). With --out, writes only to that folder.
   hospitals.csv   one row per hospital: letter, status, errors, what failed, what is open, languages, counties, and
-                  whether any of its documents was collected although its robots.txt disallows it (since Nov 12).
+                  whether any of its documents was collected although its robots.txt disallows it (since Nov 12), and
+                  whether any was collected with the headless browser (since Nov 14).
   criteria.csv    one row per hospital and criterion: the answer, what it means for the letter, the plain-language
                   explanation (config/explanations.yaml), the hospital's own words (the verified quote, with the
-                  document's address and page, and whether that document was collected despite robots.txt), the law
+                  document's address and page, and whether that document was collected despite robots.txt or with the
+                  headless browser), the law
                   cited, and the model's reason.
   report.html     the same, as one page to open in a browser (no scripts, nothing loaded from the internet).
   meta.json       which runs, prompt versions and models the results come from, and the grading rule used.
@@ -37,10 +39,10 @@ OUT = paths.ROOT / "results"
 FILES = ("hospitals.csv", "criteria.csv", "report.html", "meta.json")
 HOSPITAL_FIELDS = ["hospital_id", "name", "address", "city", "zip", "letter", "status", "errors", "confirmed_errors", "open_items",
                    "automatic_fail", "not_met", "open", "languages", "psa_counties", "landing_url",
-                   "collected_despite_robots_txt", "run_id", "prompt_version", "model"]
+                   "collected_despite_robots_txt", "collected_with_browser", "run_id", "prompt_version", "model"]
 CRITERION_FIELDS = ["hospital_id", "name", "section", "criterion_id", "title", "answer", "for_letter", "explanation",
                     "evidence_quote", "evidence_summary", "evidence_languages", "evidence_verified", "evidence_url",
-                    "evidence_page", "evidence_despite_robots_txt", "rule", "why_it_matters", "law", "code_check",
+                    "evidence_page", "evidence_despite_robots_txt", "evidence_via_browser", "rule", "why_it_matters", "law", "code_check",
                     "for_reviewer", "for_reviewer_url", "model_reason", "run_id"]
 LANGUAGES = "languages_available"     # the one row whose evidence can be a one-word quote (ask.py, Nov 12)
 FORM = "entire_uniform_application"
@@ -122,6 +124,10 @@ def _languages_named(rec: dict, reported_languages: list[dict]) -> str:
     return "; ".join(sorted(named)) or (rec.get("quote") or "").strip().title()
 
 
+BROWSER_NOTE = ("Some pages and documents were collected with a headless web browser because plain downloads could not "
+                "read them (pages built by JavaScript, or access checks a browser passes without a CAPTCHA). The browser "
+                "names itself as automated and never solves a CAPTCHA; this was a deliberate decision (Nov 14, 2026), and "
+                "those hospitals are marked.")
 ROBOTS_NOTE = ("Some documents were collected even though the hospital's site asks automated tools not to fetch them "
                "(robots.txt); this was a deliberate decision (Nov 12, 2026), and those hospitals are marked.")
 
@@ -176,6 +182,7 @@ def hospital_report(hid: str, run_id: str, data: dict, criteria: list[dict], rub
     g = grade_hospital(recs, ids, rubric)
     urls = {d["sha8"]: d.get("url", "") for d in data.get("documents", [])}
     robots = {d["sha8"] for d in data.get("documents", []) if d.get("robots_disallowed")}
+    browser = {d["sha8"] for d in data.get("documents", []) if d.get("fetched_with_browser")}
     tmpl = templates.get("criteria") or {}
     common = templates.get("common") or {}
     title = lambda cid: (tmpl.get(cid) or {}).get("title") or cid  # noqa: E731
@@ -225,6 +232,7 @@ def hospital_report(hid: str, run_id: str, data: dict, criteria: list[dict], rub
             "evidence_url": evidence_url,
             "evidence_page": page,
             "evidence_despite_robots_txt": "yes" if verified and rec.get("source_doc") in robots else "",
+            "evidence_via_browser": "yes" if verified and rec.get("source_doc") in browser else "",
             "rule": t.get("rule", "") if ans != YES else "",
             "why_it_matters": t.get("why_it_matters", "") if ans not in (YES, NA) else "",
             "law": "; ".join(explain.citation(ref["cite"]) for ref in t.get("law") or []),
@@ -244,7 +252,8 @@ def hospital_report(hid: str, run_id: str, data: dict, criteria: list[dict], rub
         "languages": _verified_list(rep.get("languages", []), "language"),
         "psa_counties": _verified_list(rep.get("psa_counties", []), "county"),
         "landing_url": info.get("landing_url", ""),
-        "collected_despite_robots_txt": "yes" if robots else "no", "run_id": run_id,
+        "collected_despite_robots_txt": "yes" if robots else "no",
+        "collected_with_browser": "yes" if browser else "no", "run_id": run_id,
         "prompt_version": data.get("prompt_version", ""), "model": data.get("model", ""),
     }
     return summary, rows
@@ -278,7 +287,8 @@ def build(run_ids: list[str]) -> tuple[list[dict], list[dict], dict]:
             "models": sorted({h["model"] for h in hospitals}),
             "open_items_count_as_no": bool(rubric.get("open_items_count_as_no")),
             "explanations_version": templates.get("version", ""), "hospitals": len(hospitals),
-            "hospitals_collected_despite_robots_txt": sum(h["collected_despite_robots_txt"] == "yes" for h in hospitals)}
+            "hospitals_collected_despite_robots_txt": sum(h["collected_despite_robots_txt"] == "yes" for h in hospitals),
+            "hospitals_collected_with_browser": sum(h.get("collected_with_browser") == "yes" for h in hospitals)}
     return hospitals, criterion_rows, meta
 
 
@@ -334,6 +344,8 @@ def render_html(hospitals: list[dict], rows: list[dict], meta: dict) -> str:
            f"Status: {e(', '.join(f'{k} {v}' for k, v in sorted(status.items())))}.</p>",
            (f"<p class='note'>{e(ROBOTS_NOTE)} Hospitals marked: {meta['hospitals_collected_despite_robots_txt']}.</p>"
             if meta.get("hospitals_collected_despite_robots_txt") else ""),
+           (f"<p class='note'>{e(BROWSER_NOTE)} Hospitals marked: {meta['hospitals_collected_with_browser']}.</p>"
+            if meta.get("hospitals_collected_with_browser") else ""),
            "<h2>Summary</h2><div class='scroll'><table><tr><th>Hospital</th><th>Letter</th><th>Status</th>"
            "<th>Not met</th><th>Open</th><th>Languages</th></tr>"]
     for h in hospitals:
@@ -359,6 +371,8 @@ def render_html(hospitals: list[dict], rows: list[dict], meta: dict) -> str:
             meta_bits.append(f"<span class='chip'>automatic F: {e(h['automatic_fail'])}</span>")
         if h["collected_despite_robots_txt"] == "yes":
             meta_bits.append("<span class='chip'>some documents collected despite robots.txt</span>")
+        if h.get("collected_with_browser") == "yes":
+            meta_bits.append("<span class='chip'>some documents collected with a headless browser</span>")
         if h["landing_url"]:
             meta_bits.append(f"<a class='small' href='{e(h['landing_url'])}'>financial assistance page</a>")
         if h["psa_counties"]:
@@ -373,7 +387,9 @@ def render_html(hospitals: list[dict], rows: list[dict], meta: dict) -> str:
                 src = (f" <a class='small' href='{e(r['evidence_url'])}'>document</a>" if r["evidence_url"] else "") + \
                       (f" <span class='small muted'>page {e(str(r['evidence_page']))}</span>" if r["evidence_page"] else "") + \
                       (" <span class='small muted'>(collected despite robots.txt)</span>"
-                       if r["evidence_despite_robots_txt"] else "")
+                       if r["evidence_despite_robots_txt"] else "") + \
+                      (" <span class='small muted'>(collected with a headless browser)</span>"
+                       if r.get("evidence_via_browser") else "")
                 if r.get("evidence_languages"):     # Languages row with a one-word quote: say what it shows
                     named = ", ".join(r["evidence_languages"].split("; "))
                     cell.append(f"<blockquote class='small'>Languages named in this document: {e(named)}{src}</blockquote>")

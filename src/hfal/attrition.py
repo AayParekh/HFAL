@@ -41,6 +41,16 @@ def worst(categories: list[str | None]) -> str | None:
     return next((c for c in PRIORITY if c in found), None)
 
 
+def required_documents(disc: dict) -> list[str]:
+    """The selected documents a hospital needs downloaded to be evaluable.
+
+    Its selected PDF and Word documents; when discovery selected none, its selected web pages (since Nov 14,
+    owner: a hospital that posts its policy only as web pages counts. Dev evidence: 135 of 1,030 verified YES/NO
+    answers in the v7 dev runs quote a web page). The landing page alone is never enough."""
+    docs = [c["url"] for c in disc["candidates"] if c["selected"] and c["kind"] in ("pdf", "docx")]
+    return docs or [c["url"] for c in disc["candidates"] if c["selected"] and c["kind"] == "html"]
+
+
 def classify(h: dict, entries: list[dict], disc: dict | None, ocr: dict[str, bool],
              excluded: dict[str, str], outcome: str | None) -> tuple[int, str]:
     """(stages passed, category it stopped for; '' if it passed everything asked about).
@@ -58,9 +68,10 @@ def classify(h: dict, entries: list[dict], disc: dict | None, ocr: dict[str, boo
         return 2, worst([failure_category(e["status"]) for e in landing]) or "broken_or_empty"
     if disc is None:
         return 3, "not_run"
-    selected = [c["url"] for c in disc["candidates"] if c["selected"] and c["kind"] in ("pdf", "docx")]
+    selected = required_documents(disc)
     if not selected:
-        return 3, "bot_check" if disc.get("warnings") else "broken_or_empty"
+        captcha = any(p["status"] == "captcha" for p in (disc.get("browser") or {}).get("browser_pages_visited", []))
+        return 3, "bot_check" if disc.get("warnings") or captcha else "broken_or_empty"
     by_url = {e["url"]: e for e in entries}
     bad = worst([failure_category(by_url[u]["status"]) if u in by_url else "broken_or_empty" for u in selected])
     if bad:
@@ -87,6 +98,14 @@ def robots_ignored(entries: list[dict], disc: dict | None) -> bool:
     """True when something of this hospital's was fetched although its robots.txt disallows it (fetch.respect_robots
     false, since Nov 12): a file in its latest manifest, or a page discovery read. Not an exclusion; it is reported."""
     return any(e.get("robots_disallowed") for e in entries) or bool((disc or {}).get("robots_txt_ignored"))
+
+
+def browser_used(entries: list[dict], disc: dict | None) -> bool:
+    """True when something of this hospital's was collected with the headless browser (fetch.browser_fallback,
+    since Nov 14): a file in its latest manifest, or discovery used the browser's crawl. Not an exclusion; it is
+    reported."""
+    return (any(e.get("fetched_with_browser") for e in entries)
+            or bool(((disc or {}).get("browser") or {}).get("used")))
 
 
 def full_manifest(hid: str) -> list[dict]:

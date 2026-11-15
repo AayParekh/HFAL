@@ -99,6 +99,58 @@ def _store(hdir: Path, url: str, content: bytes, ext: str) -> dict:
                 change="new" if prev is None else ("unchanged" if prev == sha8 else "changed"))
 
 
+NO_BROWSER_FOR = (404, 410)     # gone is gone: a browser gets the same answer
+BROWSER_SUFFIX = " (browser)"   # same as discover.BROWSER_SUFFIX (a sources.csv label ending)
+
+
+class _Null:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+
+def _make_browser(cfg: dict):
+    """The Playwright fallback (src/hfal/browser.py) when fetch.browser_fallback is on, else None."""
+    if not cfg.get("browser_fallback"):
+        return None
+    from .browser import Browser
+
+    return Browser(cfg["timeout_seconds"], cfg.get("browser_settle_ms", 5000))
+
+
+def needs_browser(entry: dict, body: bytes, is_landing: bool) -> bool:
+    """Retry a URL in the headless browser? Yes when the plain download was blocked (401/403/429), failed
+    (network error, server error), or, for a landing page, came back as HTML with no links (a page built by
+    JavaScript, or a bot-check page). Not for 404/410."""
+    if entry["status"] in ("blocked", "error"):
+        return True
+    if entry["status"] == "http_error":
+        return entry.get("http_status") not in NO_BROWSER_FOR
+    if entry["status"] == "ok" and is_landing and _extension(entry["url"], entry.get("content_type", ""), body) == "html":
+        from .discover import page_links
+
+        return not page_links(body, entry.get("final_url") or entry["url"])
+    return False
+
+
+def _browser_retry(browser, url: str, entry: dict) -> bytes | None:
+    """Fetch url in the browser; on success update entry (marked fetched_with_browser) and return the body.
+    The plain result is kept as plain_status. A CAPTCHA leaves the entry blocked (never solved)."""
+    r = browser.fetch(url)
+    entry["plain_status"] = entry.get("http_status") or entry["status"]
+    entry["browser_status"] = r["status"]
+    if r["status"] == 200 and r["body"]:
+        entry.update(status="ok", http_status=200, final_url=r["final_url"], content_type=r["content_type"],
+                     fetched_with_browser=True)
+        entry.pop("error", None)
+        return r["body"]
+    if r["status"] in ("captcha", 401, 403, 429):
+        entry["status"] = "blocked"
+    return None
+
+
 MANUAL_SKIP = {".ds_store", "readme.md", "readme.txt"}
 
 
@@ -140,7 +192,8 @@ def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None, lan
                 by_hospital.setdefault(d.name, [])
 
     today = date.today().isoformat()
-    with make_client(cfg["timeout_seconds"]) as client:
+    browser = _make_browser(cfg)
+    with make_client(cfg["timeout_seconds"]) as client, (browser or _Null()):
         robots = Robots(client)
         for hid, items in sorted(by_hospital.items()):
             hdir = paths.RAW / hid
@@ -160,21 +213,33 @@ def fetch_all(sources_csv: Path | None = None, only: set[str] | None = None, lan
                 else:
                     if disallowed:      # fetched anyway (respect_robots: false, decided Nov 12); reports say so
                         entry["robots_disallowed"] = True
-                    try:
-                        r = client.get(url)
-                        entry["http_status"] = r.status_code
-                        entry["final_url"] = str(r.url)
-                        entry["content_type"] = r.headers.get("content-type", "")
-                        if r.status_code == 200:
-                            ext = _extension(url, entry["content_type"], r.content)
-                            entry.update(status="ok", last_modified=r.headers.get("last-modified"),
-                                         **_store(hdir, url, r.content, ext))
-                        elif r.status_code in (401, 403, 429):
-                            entry["status"] = "blocked"  # download by hand into data/manual/{hospital_id}/
-                        else:
-                            entry["status"] = "http_error"
-                    except httpx.HTTPError as e:
-                        entry.update(status="error", error=str(e))
+                    body, last_modified = b"", None
+                    if browser is not None and entry["label"].endswith(BROWSER_SUFFIX):
+                        # A page discovery could only read in the browser: plain HTTP would get it unrendered.
+                        entry["status"] = "error"
+                        body = _browser_retry(browser, url, entry) or b""
+                        entry["plain_status"] = "not tried (page found by the browser)"
+                    else:
+                        try:
+                            r = client.get(url)
+                            body, last_modified = r.content, r.headers.get("last-modified")
+                            entry["http_status"] = r.status_code
+                            entry["final_url"] = str(r.url)
+                            entry["content_type"] = r.headers.get("content-type", "")
+                            if r.status_code == 200:
+                                entry["status"] = "ok"
+                            elif r.status_code in (401, 403, 429):
+                                entry["status"] = "blocked"
+                            else:
+                                entry["status"] = "http_error"
+                        except httpx.HTTPError as e:
+                            entry.update(status="error", error=str(e))
+                        if browser is not None and needs_browser(entry, body, entry["label"] == LANDING_LABEL):
+                            body = _browser_retry(browser, url, entry) or body
+                    if entry["status"] == "ok":
+                        ext = _extension(url, entry["content_type"], body)
+                        entry.update(last_modified=None if entry.get("fetched_with_browser") else last_modified,
+                                     **_store(hdir, url, body, ext))
                 manifest.append(entry)
                 print(f"{hid}  {entry['status']:<18} {url}")
                 time.sleep(cfg["delay_seconds"])
