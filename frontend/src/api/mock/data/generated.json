@@ -1,0 +1,5714 @@
+{
+  "audit_round": "2025-09",
+  "rubric_version": "v1-draft",
+  "criteria": [
+    {
+      "code": "application_posted",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "derived_from_documents",
+      "rule": "document of type 'application' exists",
+      "is_auto_fail": true
+    },
+    {
+      "code": "pls_posted",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "derived_from_documents",
+      "rule": "document of type 'pls' exists",
+      "is_auto_fail": false
+    },
+    {
+      "code": "policy_statement_posted",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "derived_from_documents",
+      "rule": "document of type 'policy_statement' exists",
+      "is_auto_fail": true
+    },
+    {
+      "code": "consistent_across_docs",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "boolean",
+      "rule": null,
+      "is_auto_fail": false
+    },
+    {
+      "code": "psa_2007_compliant",
+      "section": "materials",
+      "evaluates": "facility",
+      "value_type": "boolean",
+      "rule": "PSA boundaries comply with 2007 guidelines (needs county + adjacency table)",
+      "is_auto_fail": false
+    },
+    {
+      "code": "no_time_limit",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "integer_days_or_null",
+      "rule": "no deadline to submit",
+      "is_auto_fail": false
+    },
+    {
+      "code": "no_asset_checks",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "boolean",
+      "rule": "no evidence of asset checks",
+      "is_auto_fail": false
+    },
+    {
+      "code": "no_immigration_barrier",
+      "section": "materials",
+      "evaluates": "package",
+      "value_type": "boolean",
+      "rule": "immigration status not a barrier",
+      "is_auto_fail": false
+    },
+    {
+      "code": "uniform_app_complete",
+      "section": "application",
+      "evaluates": "document",
+      "value_type": "boolean",
+      "rule": "entire Uniform Application present",
+      "is_auto_fail": true
+    },
+    {
+      "code": "app_contact_info",
+      "section": "application",
+      "evaluates": "document",
+      "value_type": "boolean",
+      "rule": "contact info and phone included",
+      "is_auto_fail": false
+    },
+    {
+      "code": "app_income_discount_tables",
+      "section": "application",
+      "evaluates": "document",
+      "value_type": "boolean",
+      "rule": "income and discount tables included",
+      "is_auto_fail": false
+    },
+    {
+      "code": "app_fpl_year_current",
+      "section": "application",
+      "evaluates": "document",
+      "value_type": "integer_year",
+      "rule": "fpl_year == 2025",
+      "is_auto_fail": false
+    },
+    {
+      "code": "app_max_fpl_pct",
+      "section": "application",
+      "evaluates": "document",
+      "value_type": "integer_pct",
+      "rule": "max_fpl_pct >= 400",
+      "is_auto_fail": false
+    },
+    {
+      "code": "app_installment_cap",
+      "section": "application",
+      "evaluates": "document",
+      "value_type": "integer_pct",
+      "rule": "installments capped at 5% of monthly income",
+      "is_auto_fail": false
+    },
+    {
+      "code": "pls_psa_described",
+      "section": "pls",
+      "evaluates": "document",
+      "value_type": "boolean",
+      "rule": "PSA described in summary",
+      "is_auto_fail": false
+    },
+    {
+      "code": "pls_means_of_applying",
+      "section": "pls",
+      "evaluates": "document",
+      "value_type": "boolean",
+      "rule": "means of applying explained",
+      "is_auto_fail": false
+    },
+    {
+      "code": "pls_income_levels",
+      "section": "pls",
+      "evaluates": "document",
+      "value_type": "boolean",
+      "rule": "income levels used to determine assistance stated",
+      "is_auto_fail": false
+    }
+  ],
+  "systems": [
+    {
+      "system_id": "example-nyc-network",
+      "name": "Example NYC Health Network"
+    },
+    {
+      "system_id": "example-pines-health",
+      "name": "Example Pines Health"
+    }
+  ],
+  "operators": [
+    {
+      "ocn": "DEMO-OCN-01"
+    },
+    {
+      "ocn": "DEMO-OCN-02"
+    },
+    {
+      "ocn": "DEMO-OCN-03"
+    },
+    {
+      "ocn": "DEMO-OCN-04"
+    },
+    {
+      "ocn": "DEMO-OCN-05"
+    },
+    {
+      "ocn": "DEMO-OCN-06"
+    },
+    {
+      "ocn": "DEMO-OCN-07"
+    },
+    {
+      "ocn": "DEMO-OCN-08"
+    },
+    {
+      "ocn": "DEMO-OCN-09"
+    },
+    {
+      "ocn": "DEMO-OCN-10"
+    },
+    {
+      "ocn": "DEMO-OCN-11"
+    },
+    {
+      "ocn": "DEMO-OCN-12"
+    },
+    {
+      "ocn": "DEMO-OCN-13"
+    },
+    {
+      "ocn": "DEMO-OCN-14"
+    },
+    {
+      "ocn": "DEMO-OCN-15"
+    }
+  ],
+  "facilities": [
+    {
+      "pfi": "demo-01",
+      "name": "Example Valley Medical Center",
+      "address": "250 Test Place",
+      "city": "Albany",
+      "county": "Albany",
+      "state": "NY",
+      "zip": "12220",
+      "ocn": "DEMO-OCN-01",
+      "ccn": "DEMO-CCN-01",
+      "system_id": null,
+      "package_id": "example-valley-2025",
+      "phone": "518-555-0144"
+    },
+    {
+      "pfi": "demo-02",
+      "name": "Sample Harbor Hospital",
+      "address": "502 Prototype Way",
+      "city": "Brooklyn",
+      "county": "Kings",
+      "state": "NY",
+      "zip": "11257",
+      "ocn": "DEMO-OCN-02",
+      "ccn": "DEMO-CCN-02",
+      "system_id": "example-nyc-network",
+      "package_id": "sample-harbor-2025",
+      "phone": "718-555-0132"
+    },
+    {
+      "pfi": "demo-03",
+      "name": "Demo Heights Community Hospital",
+      "address": "945 Sample Street",
+      "city": "Bronx",
+      "county": "Bronx",
+      "state": "NY",
+      "zip": "10469",
+      "ocn": "DEMO-OCN-03",
+      "ccn": "DEMO-CCN-03",
+      "system_id": "example-nyc-network",
+      "package_id": "demo-heights-2025",
+      "phone": "718-555-0126"
+    },
+    {
+      "pfi": "demo-04",
+      "name": "Placeholder Park Medical Center",
+      "address": "821 Placeholder Road",
+      "city": "Queens",
+      "county": "Queens",
+      "state": "NY",
+      "zip": "11328",
+      "ocn": "DEMO-OCN-04",
+      "ccn": "DEMO-CCN-04",
+      "system_id": "example-nyc-network",
+      "package_id": "placeholder-park-2025",
+      "phone": "718-555-0161"
+    },
+    {
+      "pfi": "demo-05",
+      "name": "Fictional Falls Regional Hospital",
+      "address": "405 Mockingbird Lane",
+      "city": "Buffalo",
+      "county": "Erie",
+      "state": "NY",
+      "zip": "14284",
+      "ocn": "DEMO-OCN-05",
+      "ccn": "DEMO-CCN-05",
+      "system_id": null,
+      "package_id": "fictional-falls-2025",
+      "phone": "716-555-0158"
+    },
+    {
+      "pfi": "demo-06",
+      "name": "Testville General Hospital",
+      "address": "904 Placeholder Road",
+      "city": "Syracuse",
+      "county": "Onondaga",
+      "state": "NY",
+      "zip": "13220",
+      "ocn": "DEMO-OCN-06",
+      "ccn": "DEMO-CCN-06",
+      "system_id": null,
+      "package_id": "testville-general-2025",
+      "phone": "315-555-0183"
+    },
+    {
+      "pfi": "demo-07",
+      "name": "Mockingbird Memorial Hospital",
+      "address": "10 Test Place",
+      "city": "Rochester",
+      "county": "Monroe",
+      "state": "NY",
+      "zip": "14685",
+      "ocn": "DEMO-OCN-07",
+      "ccn": "DEMO-CCN-07",
+      "system_id": null,
+      "package_id": "mockingbird-memorial-2025",
+      "phone": "585-555-0125"
+    },
+    {
+      "pfi": "demo-08",
+      "name": "Sandbox Shore University Hospital",
+      "address": "776 Mockingbird Lane",
+      "city": "Hempstead",
+      "county": "Nassau",
+      "state": "NY",
+      "zip": "11518",
+      "ocn": "DEMO-OCN-08",
+      "ccn": "DEMO-CCN-08",
+      "system_id": null,
+      "package_id": "sandbox-shore-2025",
+      "phone": "516-555-0112"
+    },
+    {
+      "pfi": "demo-09",
+      "name": "Prototype Bay Medical Center",
+      "address": "939 Demo Boulevard",
+      "city": "Islip",
+      "county": "Suffolk",
+      "state": "NY",
+      "zip": "11760",
+      "ocn": "DEMO-OCN-09",
+      "ccn": "DEMO-CCN-09",
+      "system_id": null,
+      "package_id": "prototype-bay-2025",
+      "phone": "631-555-0143"
+    },
+    {
+      "pfi": "demo-10",
+      "name": "Specimen Springs Hospital",
+      "address": "443 Placeholder Road",
+      "city": "Binghamton",
+      "county": "Broome",
+      "state": "NY",
+      "zip": "13955",
+      "ocn": "DEMO-OCN-10",
+      "ccn": "DEMO-CCN-10",
+      "system_id": null,
+      "package_id": "specimen-springs-2025",
+      "phone": "607-555-0112"
+    },
+    {
+      "pfi": "demo-11",
+      "name": "Example Pines Hospital - Main Campus",
+      "address": "757 Mockingbird Lane",
+      "city": "Poughkeepsie",
+      "county": "Dutchess",
+      "state": "NY",
+      "zip": "12682",
+      "ocn": "DEMO-OCN-11",
+      "ccn": "DEMO-CCN-11",
+      "system_id": "example-pines-health",
+      "package_id": "example-pines-2025",
+      "phone": "845-555-0138"
+    },
+    {
+      "pfi": "demo-12",
+      "name": "Example Pines Hospital - North Campus",
+      "address": "414 Sample Street",
+      "city": "Beacon",
+      "county": "Dutchess",
+      "state": "NY",
+      "zip": "12573",
+      "ocn": "DEMO-OCN-11",
+      "ccn": "DEMO-CCN-12",
+      "system_id": "example-pines-health",
+      "package_id": "example-pines-2025",
+      "phone": "845-555-0147"
+    },
+    {
+      "pfi": "demo-13",
+      "name": "Illustrative Island Hospital",
+      "address": "191 Prototype Way",
+      "city": "Staten Island",
+      "county": "Richmond",
+      "state": "NY",
+      "zip": "10301",
+      "ocn": "DEMO-OCN-12",
+      "ccn": "DEMO-CCN-13",
+      "system_id": null,
+      "package_id": "illustrative-island-2025",
+      "phone": "718-555-0184"
+    },
+    {
+      "pfi": "demo-14",
+      "name": "Notional Notch Hospital",
+      "address": "206 Mockingbird Lane",
+      "city": "Plattsburgh",
+      "county": "Clinton",
+      "state": "NY",
+      "zip": "12985",
+      "ocn": "DEMO-OCN-13",
+      "ccn": "DEMO-CCN-14",
+      "system_id": null,
+      "package_id": "notional-notch-2025",
+      "phone": "518-555-0177"
+    },
+    {
+      "pfi": "demo-15",
+      "name": "Hypothetical Hills Medical Center",
+      "address": "292 Mockingbird Lane",
+      "city": "Huntington",
+      "county": "Suffolk",
+      "state": "NY",
+      "zip": "11782",
+      "ocn": "DEMO-OCN-14",
+      "ccn": "DEMO-CCN-15",
+      "system_id": null,
+      "package_id": "hypothetical-hills-2025",
+      "phone": "631-555-0183"
+    },
+    {
+      "pfi": "demo-16",
+      "name": "Pilot Point Health Center",
+      "address": "138 Demo Boulevard",
+      "city": "Elmira",
+      "county": "Chemung",
+      "state": "NY",
+      "zip": "14944",
+      "ocn": "DEMO-OCN-15",
+      "ccn": "DEMO-CCN-16",
+      "system_id": null,
+      "package_id": "pilot-point-2025",
+      "phone": "607-555-0182"
+    }
+  ],
+  "packages": [
+    {
+      "package_id": "example-valley-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/example-valley/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        }
+      ]
+    },
+    {
+      "package_id": "sample-harbor-2025",
+      "owner_system_id": "example-nyc-network",
+      "landing_url": "https://example.org/sample-harbor/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "zh"
+        }
+      ]
+    },
+    {
+      "package_id": "demo-heights-2025",
+      "owner_system_id": "example-nyc-network",
+      "landing_url": "https://example.org/demo-heights/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        }
+      ]
+    },
+    {
+      "package_id": "placeholder-park-2025",
+      "owner_system_id": "example-nyc-network",
+      "landing_url": "https://example.org/placeholder-park/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "zh"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "bn"
+        }
+      ]
+    },
+    {
+      "package_id": "fictional-falls-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/fictional-falls/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        }
+      ]
+    },
+    {
+      "package_id": "testville-general-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/testville-general/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        }
+      ]
+    },
+    {
+      "package_id": "mockingbird-memorial-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/mockingbird-memorial/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        }
+      ]
+    },
+    {
+      "package_id": "sandbox-shore-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/sandbox-shore/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        }
+      ]
+    },
+    {
+      "package_id": "prototype-bay-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/prototype-bay/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        }
+      ]
+    },
+    {
+      "package_id": "specimen-springs-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/specimen-springs/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        }
+      ]
+    },
+    {
+      "package_id": "example-pines-2025",
+      "owner_system_id": "example-pines-health",
+      "landing_url": "https://example.org/example-pines/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        },
+        {
+          "doc_type": "application",
+          "language_code": "ru"
+        }
+      ]
+    },
+    {
+      "package_id": "illustrative-island-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/illustrative-island/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "ru"
+        }
+      ]
+    },
+    {
+      "package_id": "notional-notch-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/notional-notch/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "fr"
+        }
+      ]
+    },
+    {
+      "package_id": "hypothetical-hills-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/hypothetical-hills/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "es"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "zh"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "ru"
+        },
+        {
+          "doc_type": "all",
+          "language_code": "ko"
+        },
+        {
+          "doc_type": "application",
+          "language_code": "ar"
+        }
+      ]
+    },
+    {
+      "package_id": "pilot-point-2025",
+      "owner_system_id": null,
+      "landing_url": "https://example.org/pilot-point/financial-assistance",
+      "languages": [
+        {
+          "doc_type": "all",
+          "language_code": "en"
+        }
+      ]
+    }
+  ],
+  "documents": [
+    {
+      "package_id": "example-valley-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "example-valley-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/example-valley/financial-assistance-application.pdf",
+      "retrieved_at": "2026-10-08",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "example-valley-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "example-valley-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/example-valley/plain-language-summary.pdf",
+      "retrieved_at": "2026-10-08",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "example-valley-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "example-valley-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/example-valley/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-10-10",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "sample-harbor-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "sample-harbor-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/sample-harbor/financial-assistance-application.pdf",
+      "retrieved_at": "2025-11-23",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "sample-harbor-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "sample-harbor-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/sample-harbor/plain-language-summary.pdf",
+      "retrieved_at": "2025-11-23",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "sample-harbor-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "sample-harbor-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/sample-harbor/financial-assistance-policy.pdf",
+      "retrieved_at": "2025-11-21",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "demo-heights-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "demo-heights-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/demo-heights/financial-assistance-application.pdf",
+      "retrieved_at": "2026-10-30",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "demo-heights-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "demo-heights-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/demo-heights/plain-language-summary.pdf",
+      "retrieved_at": "2026-10-29",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "demo-heights-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "demo-heights-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/demo-heights/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-10-29",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "placeholder-park-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "placeholder-park-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/placeholder-park/financial-assistance-application.pdf",
+      "retrieved_at": "2026-06-03",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "placeholder-park-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "placeholder-park-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/placeholder-park/plain-language-summary.pdf",
+      "retrieved_at": "2026-06-02",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "placeholder-park-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "placeholder-park-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/placeholder-park/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-06-02",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "fictional-falls-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "fictional-falls-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/fictional-falls/financial-assistance-application.pdf",
+      "retrieved_at": "2026-06-05",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2024,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 300,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "fictional-falls-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "fictional-falls-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/fictional-falls/plain-language-summary.pdf",
+      "retrieved_at": "2026-06-04",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "fictional-falls-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "fictional-falls-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/fictional-falls/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-06-04",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "testville-general-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "testville-general-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/testville-general/financial-assistance-application.pdf",
+      "retrieved_at": "2026-05-03",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "testville-general-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "testville-general-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/testville-general/plain-language-summary.pdf",
+      "retrieved_at": "2026-05-02",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "testville-general-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "testville-general-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/testville-general/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-05-02",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "mockingbird-memorial-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "mockingbird-memorial-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/mockingbird-memorial/financial-assistance-application.pdf",
+      "retrieved_at": "2025-12-09",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2024,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 300,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "mockingbird-memorial-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "mockingbird-memorial-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/mockingbird-memorial/plain-language-summary.pdf",
+      "retrieved_at": "2025-12-09",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "mockingbird-memorial-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "mockingbird-memorial-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/mockingbird-memorial/financial-assistance-policy.pdf",
+      "retrieved_at": "2025-12-10",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "sandbox-shore-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "sandbox-shore-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/sandbox-shore/plain-language-summary.pdf",
+      "retrieved_at": "2026-05-15",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "sandbox-shore-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "sandbox-shore-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/sandbox-shore/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-05-13",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "prototype-bay-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "prototype-bay-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/prototype-bay/financial-assistance-application.pdf",
+      "retrieved_at": "2026-10-26",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "prototype-bay-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "prototype-bay-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/prototype-bay/plain-language-summary.pdf",
+      "retrieved_at": "2026-10-27",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "prototype-bay-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "prototype-bay-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/prototype-bay/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-10-27",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "specimen-springs-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "specimen-springs-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/specimen-springs/financial-assistance-application.pdf",
+      "retrieved_at": "2025-12-11",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "specimen-springs-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "specimen-springs-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/specimen-springs/plain-language-summary.pdf",
+      "retrieved_at": "2025-12-12",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "example-pines-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "example-pines-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/example-pines/financial-assistance-application.pdf",
+      "retrieved_at": "2026-06-22",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "example-pines-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "example-pines-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/example-pines/plain-language-summary.pdf",
+      "retrieved_at": "2026-06-21",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "example-pines-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "example-pines-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/example-pines/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-06-20",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "illustrative-island-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "illustrative-island-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/illustrative-island/financial-assistance-application.pdf",
+      "retrieved_at": "2025-10-31",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2024,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "illustrative-island-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "illustrative-island-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/illustrative-island/plain-language-summary.pdf",
+      "retrieved_at": "2025-10-30",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "illustrative-island-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "illustrative-island-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/illustrative-island/financial-assistance-policy.pdf",
+      "retrieved_at": "2025-10-29",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "notional-notch-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "notional-notch-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/notional-notch/financial-assistance-application.pdf",
+      "retrieved_at": "2026-03-06",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 300,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "notional-notch-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "notional-notch-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/notional-notch/plain-language-summary.pdf",
+      "retrieved_at": "2026-03-05",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "notional-notch-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "notional-notch-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/notional-notch/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-03-04",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "hypothetical-hills-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "hypothetical-hills-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/hypothetical-hills/financial-assistance-application.pdf",
+      "retrieved_at": "2025-10-06",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "hypothetical-hills-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "hypothetical-hills-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/hypothetical-hills/plain-language-summary.pdf",
+      "retrieved_at": "2025-10-08",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "hypothetical-hills-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "hypothetical-hills-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/hypothetical-hills/financial-assistance-policy.pdf",
+      "retrieved_at": "2025-10-06",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "pilot-point-2025",
+      "archive_path": null,
+      "fpl_region": "continental",
+      "document_id": "pilot-point-2025-app",
+      "doc_type": "application",
+      "url": "https://example.org/pilot-point/financial-assistance-application.pdf",
+      "retrieved_at": "2026-03-01",
+      "is_uniform_app": true,
+      "pages_missing": 0,
+      "fpl_year_stated": 2025,
+      "facts": [
+        {
+          "fact_type": "max_fpl_pct",
+          "value_num": 400,
+          "unit": "pct_fpl"
+        }
+      ]
+    },
+    {
+      "package_id": "pilot-point-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "pilot-point-2025-pls",
+      "doc_type": "pls",
+      "url": "https://example.org/pilot-point/plain-language-summary.pdf",
+      "retrieved_at": "2026-03-02",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    },
+    {
+      "package_id": "pilot-point-2025",
+      "archive_path": null,
+      "fpl_region": null,
+      "document_id": "pilot-point-2025-policy",
+      "doc_type": "policy_statement",
+      "url": "https://example.org/pilot-point/financial-assistance-policy.pdf",
+      "retrieved_at": "2026-03-02",
+      "is_uniform_app": false,
+      "pages_missing": null,
+      "fpl_year_stated": null,
+      "facts": []
+    }
+  ],
+  "facility_psa": [
+    {
+      "facility_pfi": "demo-01",
+      "package_id": "example-valley-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Albany, Rensselaer, Schenectady Counties.",
+      "counties_listed": [
+        "Albany",
+        "Rensselaer",
+        "Schenectady"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-02",
+      "package_id": "sample-harbor-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Kings County.",
+      "counties_listed": [
+        "Kings"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-03",
+      "package_id": "demo-heights-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Bronx County.",
+      "counties_listed": [
+        "Bronx"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-04",
+      "package_id": "placeholder-park-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Queens, Nassau Counties.",
+      "counties_listed": [
+        "Queens",
+        "Nassau"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-05",
+      "package_id": "fictional-falls-2025",
+      "scope_type": "undefined",
+      "quoted_text": null,
+      "counties_listed": [],
+      "compliant": false
+    },
+    {
+      "facility_pfi": "demo-06",
+      "package_id": "testville-general-2025",
+      "scope_type": "undefined",
+      "quoted_text": null,
+      "counties_listed": [],
+      "compliant": false
+    },
+    {
+      "facility_pfi": "demo-07",
+      "package_id": "mockingbird-memorial-2025",
+      "scope_type": "undefined",
+      "quoted_text": null,
+      "counties_listed": [],
+      "compliant": false
+    },
+    {
+      "facility_pfi": "demo-08",
+      "package_id": "sandbox-shore-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Nassau County.",
+      "counties_listed": [
+        "Nassau"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-09",
+      "package_id": "prototype-bay-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Suffolk County.",
+      "counties_listed": [
+        "Suffolk"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-10",
+      "package_id": "specimen-springs-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Broome, Tioga Counties.",
+      "counties_listed": [
+        "Broome",
+        "Tioga"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-11",
+      "package_id": "example-pines-2025",
+      "scope_type": "undefined",
+      "quoted_text": null,
+      "counties_listed": [],
+      "compliant": false
+    },
+    {
+      "facility_pfi": "demo-12",
+      "package_id": "example-pines-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Dutchess, Putnam Counties.",
+      "counties_listed": [
+        "Dutchess",
+        "Putnam"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-13",
+      "package_id": "illustrative-island-2025",
+      "scope_type": "undefined",
+      "quoted_text": null,
+      "counties_listed": [],
+      "compliant": false
+    },
+    {
+      "facility_pfi": "demo-14",
+      "package_id": "notional-notch-2025",
+      "scope_type": "unclear",
+      "quoted_text": "We serve communities across the region.",
+      "counties_listed": [],
+      "compliant": false
+    },
+    {
+      "facility_pfi": "demo-15",
+      "package_id": "hypothetical-hills-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Suffolk, Nassau Counties.",
+      "counties_listed": [
+        "Suffolk",
+        "Nassau"
+      ],
+      "compliant": true
+    },
+    {
+      "facility_pfi": "demo-16",
+      "package_id": "pilot-point-2025",
+      "scope_type": "county_list",
+      "quoted_text": "Our primary service area includes Chemung, Steuben Counties.",
+      "counties_listed": [
+        "Chemung",
+        "Steuben"
+      ],
+      "compliant": true
+    }
+  ],
+  "assessments": [
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "example-valley-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": "Immigration status is not considered in eligibility.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": "Based on the 2025 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "example-valley-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "example-valley-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-01"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-valley-2025-pls",
+      "evidence_quote": "Our primary service area includes Albany, Rensselaer, Schenectady Counties.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "sample-harbor-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "sample-harbor-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "sample-harbor-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-02"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sample-harbor-2025-pls",
+      "evidence_quote": "Our primary service area includes Kings County.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "demo-heights-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Phone number field is left blank on the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "demo-heights-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "demo-heights-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The summary does not state the income levels used.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-03"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "demo-heights-2025-pls",
+      "evidence_quote": "Our primary service area includes Bronx County.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "fail",
+      "measured_value": 30,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application sets a deadline for submission.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application asks applicants to provide bank statements.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "placeholder-park-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": "Immigration status is not considered in eligibility.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": "Based on the 2025 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 10,
+      "evidence_document_id": "placeholder-park-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The installment cap is missing or higher than 5% of gross monthly income.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "placeholder-park-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-04"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "placeholder-park-2025-pls",
+      "evidence_quote": "Our primary service area includes Queens, Nassau Counties.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application and the policy give different eligibility thresholds.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "fictional-falls-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 2024,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application uses an out-of-date federal poverty level year.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 300,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": "Discounts apply to incomes up to 300% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": "Eligibility stops below 400% of the federal poverty level.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "fictional-falls-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The primary service area appears in the policy but not in the summary.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "fictional-falls-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "fictional-falls-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-05"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No primary service area listed or described in any posted documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-pls",
+      "evidence_quote": "Frequently Asked Questions About Financial Assistance",
+      "is_judgment_call": true,
+      "rationale": "An FAQ page is used as the plain language summary; treated as a summary (judgment call, rubric 6.4).",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "testville-general-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": "Applicants must be U.S. citizens or lawful permanent residents.",
+      "is_judgment_call": false,
+      "rationale": "The policy limits eligibility based on immigration status.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Phone number field is left blank on the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The income and discount tables are not part of the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": "Based on the 2025 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 10,
+      "evidence_document_id": "testville-general-2025-app",
+      "evidence_quote": "Monthly payments will not exceed 10% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": "The installment cap is missing or higher than 5% of gross monthly income.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The primary service area appears in the policy but not in the summary.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The summary does not explain how to apply.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "testville-general-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "testville-general-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The summary does not state the income levels used.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-06"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No primary service area listed or described in any posted documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application and the policy give different eligibility thresholds.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "fail",
+      "measured_value": 30,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": "Applications must be submitted within 30 days of the date of service.",
+      "is_judgment_call": false,
+      "rationale": "The application sets a deadline for submission.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": "Please attach your three most recent bank statements.",
+      "is_judgment_call": false,
+      "rationale": "The application asks applicants to provide bank statements.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "mockingbird-memorial-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The policy limits eligibility based on immigration status.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Phone number field is left blank on the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The income and discount tables are not part of the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 2024,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": "Based on the 2024 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": "The application uses an out-of-date federal poverty level year.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 300,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": "Discounts apply to incomes up to 300% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": "Eligibility stops below 400% of the federal poverty level.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 10,
+      "evidence_document_id": "mockingbird-memorial-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The installment cap is missing or higher than 5% of gross monthly income.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The primary service area appears in the policy but not in the summary.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "mockingbird-memorial-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "mockingbird-memorial-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-07"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No primary service area listed or described in any posted documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No financial assistance application found on the landing page or in linked documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sandbox-shore-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sandbox-shore-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No application posted; this criterion cannot be evaluated.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No application posted; this criterion cannot be evaluated.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No application posted; this criterion cannot be evaluated.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No application posted; this criterion cannot be evaluated.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No application posted; this criterion cannot be evaluated.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "package",
+        "id": "sandbox-shore-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No application posted; this criterion cannot be evaluated.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "sandbox-shore-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sandbox-shore-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "sandbox-shore-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sandbox-shore-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "sandbox-shore-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "sandbox-shore-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The summary does not state the income levels used.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-08"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "sandbox-shore-2025-pls",
+      "evidence_quote": "Our primary service area includes Nassau County.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "prototype-bay-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": "Immigration status is not considered in eligibility.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The hospital uses its own application instead of the NYS Uniform Application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 10,
+      "evidence_document_id": "prototype-bay-2025-app",
+      "evidence_quote": "Monthly payments will not exceed 10% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": "The installment cap is missing or higher than 5% of gross monthly income.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "prototype-bay-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-09"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "prototype-bay-2025-pls",
+      "evidence_quote": "Our primary service area includes Suffolk County.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No policy statement found on the landing page or in linked documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "fail",
+      "measured_value": 30,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application sets a deadline for submission.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "specimen-springs-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": "Immigration status is not considered in eligibility.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": "Based on the 2025 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "specimen-springs-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "specimen-springs-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-10"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "specimen-springs-2025-pls",
+      "evidence_quote": "Our primary service area includes Broome, Tioga Counties.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "example-pines-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": "Immigration status is not considered in eligibility.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": "Based on the 2025 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "example-pines-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "example-pines-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-11"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No primary service area listed or described in any posted documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-12"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "example-pines-2025-pls",
+      "evidence_quote": "Our primary service area includes Dutchess, Putnam Counties.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "needs_review",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Could not be determined with confidence; manual verification needed.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "illustrative-island-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Phone number field is left blank on the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 2024,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": "Based on the 2024 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": "The application uses an out-of-date federal poverty level year.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-app"
+      },
+      "result": "needs_review",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Could not be determined with confidence; manual verification needed.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The primary service area appears in the policy but not in the summary.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "illustrative-island-2025-pls"
+      },
+      "result": "needs_review",
+      "measured_value": null,
+      "evidence_document_id": "illustrative-island-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Could not be determined with confidence; manual verification needed.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-13"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "No primary service area listed or described in any posted documents.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "needs_review",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Could not be determined with confidence; manual verification needed.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "not_applicable",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Source records N/A.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application asks applicants to provide bank statements.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "notional-notch-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": true,
+      "rationale": "No mention of immigration status in any posted document; passes under the \"no mention\" rule.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-app"
+      },
+      "result": "fail",
+      "measured_value": 300,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": "Discounts apply to incomes up to 300% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": "Eligibility stops below 400% of the federal poverty level.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "notional-notch-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "notional-notch-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "notional-notch-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-14"
+      },
+      "result": "needs_review",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "PSA wording is unclear; manual verification needed.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": "There is no deadline to submit an application.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "hypothetical-hills-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "hypothetical-hills-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-pls",
+      "evidence_quote": "To apply, complete the application and return it to Patient Financial Services.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "hypothetical-hills-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-15"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "hypothetical-hills-2025-pls",
+      "evidence_quote": "Our primary service area includes Suffolk, Nassau Counties.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "application_posted",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": "Financial Assistance Application",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_posted",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "policy_statement_posted",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-policy",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "consistent_across_docs",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": null,
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_time_limit",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "fail",
+      "measured_value": 30,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The application sets a deadline for submission.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_asset_checks",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "no_immigration_barrier",
+      "scope": {
+        "type": "package",
+        "id": "pilot-point-2025"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": "Immigration status is not considered in eligibility.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "uniform_app_complete",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-app"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_contact_info",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "Phone number field is left blank on the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_income_discount_tables",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-app"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The income and discount tables are not part of the application.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_fpl_year_current",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 2025,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": "Based on the 2025 Federal Poverty Guidelines.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_max_fpl_pct",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 400,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": "Discounts are available up to 400% of the Federal Poverty Level.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "app_installment_cap",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-app"
+      },
+      "result": "pass",
+      "measured_value": 5,
+      "evidence_document_id": "pilot-point-2025-app",
+      "evidence_quote": "Payments will not exceed 5% of gross monthly income.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_psa_described",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_means_of_applying",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-pls"
+      },
+      "result": "fail",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": "The summary does not explain how to apply.",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "pls_income_levels",
+      "scope": {
+        "type": "document",
+        "id": "pilot-point-2025-pls"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-pls",
+      "evidence_quote": null,
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "audit_round": "2025-09",
+      "criterion_code": "psa_2007_compliant",
+      "scope": {
+        "type": "facility",
+        "id": "demo-16"
+      },
+      "result": "pass",
+      "measured_value": null,
+      "evidence_document_id": "pilot-point-2025-pls",
+      "evidence_quote": "Our primary service area includes Chemung, Steuben Counties.",
+      "is_judgment_call": false,
+      "rationale": null,
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "grade_results": [
+    {
+      "package_id": "example-valley-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "A",
+      "noncompliant_count": 0,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "sample-harbor-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "A",
+      "noncompliant_count": 0,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "demo-heights-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "B",
+      "noncompliant_count": 2,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "placeholder-park-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "B",
+      "noncompliant_count": 3,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "fictional-falls-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "C",
+      "noncompliant_count": 5,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "testville-general-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "D",
+      "noncompliant_count": 8,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "mockingbird-memorial-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "F",
+      "noncompliant_count": 11,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "sandbox-shore-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "F",
+      "noncompliant_count": 2,
+      "auto_fail": true,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "prototype-bay-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "F",
+      "noncompliant_count": 2,
+      "auto_fail": true,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "specimen-springs-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "F",
+      "noncompliant_count": 2,
+      "auto_fail": true,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "illustrative-island-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "C",
+      "noncompliant_count": 4,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "notional-notch-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "B",
+      "noncompliant_count": 2,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "hypothetical-hills-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "A",
+      "noncompliant_count": 0,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    },
+    {
+      "package_id": "pilot-point-2025",
+      "audit_round": "2025-09",
+      "rubric_version": "v1-draft",
+      "grade": "C",
+      "noncompliant_count": 4,
+      "auto_fail": false,
+      "computed": true,
+      "note": null
+    }
+  ]
+}
