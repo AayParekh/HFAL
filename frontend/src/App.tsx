@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { DemoBanner } from '@/components/demo-banner'
+import { SiteFooter } from '@/components/site-footer'
 import { FacilitiesPage } from '@/features/facilities/facilities-page'
 
 // Future routes (statewide map, recent updates) slot in here.
@@ -13,6 +14,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <SiteFooter />
     </>
   )
 }
