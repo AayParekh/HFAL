@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 
-from hfal import ask, formcheck, fpl, paths
+from hfal import ask, fpl, paths
 from hfal.extract import extract_pdf
 from hfal.verify import verify_quote
 

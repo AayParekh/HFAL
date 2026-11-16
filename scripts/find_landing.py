@@ -27,8 +27,6 @@ Validation uses dev hospitals only (CLAUDE.md, Evaluation honesty). It prints co
 """
 
 import argparse
-import csv
-import json
 import re
 import sys
 import time
@@ -38,8 +36,9 @@ from urllib.parse import parse_qs, quote_plus, urlparse
 
 from bs4 import BeautifulSoup
 
-from hfal import discover, paths
+from hfal import discover, hospitals, paths
 from hfal.fetch import make_client
+from hfal.files import read_json, write_csv, write_json
 
 SEARCH_URL = "https://html.duckduckgo.com/html/?q={q}"
 TOP_N = 10
@@ -69,7 +68,7 @@ def search(client, hid: str, query: str) -> dict:
     """Top results for query, cached per hospital (the first search is kept for good)."""
     f = OUT / "search" / f"{hid}.json"
     if f.exists():
-        cached = json.loads(f.read_text(encoding="utf-8"))
+        cached = read_json(f)
         if cached.get("query") == query and cached.get("status") == 200:
             return cached
     time.sleep(DELAY_SECONDS)
@@ -86,8 +85,7 @@ def search(client, hid: str, query: str) -> dict:
     rec = {"hospital_id": hid, "query": query, "status": status, "results": results,
            "searched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "blocked": bool(re.search(r"anomaly|captcha", html, re.I)) and not results}
-    f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json(f, rec, ensure_ascii=False)
     return rec
 
 
@@ -143,7 +141,11 @@ def compare(found: str, known: str) -> str:
     return "other site"
 
 
-def crawl_docs(client, landing: str, hid: str, hospitals: dict) -> set[str]:
+def selected_docs(res: dict) -> set[str]:
+    return {c["url"] for c in res["candidates"] if c["selected"] and c["kind"] in discover.DOC_KINDS}
+
+
+def crawl_docs(client, landing: str, hid: str, table: dict) -> set[str]:
     """PDF / Word documents discovery would select starting from landing (plain HTTP, discovery's rules)."""
     def get(u):
         time.sleep(paths.settings()["fetch"]["delay_seconds"])
@@ -152,8 +154,7 @@ def crawl_docs(client, landing: str, hid: str, hospitals: dict) -> set[str]:
             return r.status_code, r.headers.get("content-type", ""), r.content
         except Exception as e:
             return f"error: {type(e).__name__}", "", b""
-    res = discover.select(discover.crawl(landing, get), landing, discover.name_filter(hid, hospitals))
-    return {c["url"] for c in res["candidates"] if c["selected"] and c["kind"] in ("pdf", "docx")}
+    return selected_docs(discover.select(discover.crawl(landing, get), landing, discover.name_filter(hid, table)))
 
 
 def main() -> int:
@@ -164,11 +165,11 @@ def main() -> int:
     p.add_argument("--crawl", action="store_true", help="with --validate: compare the documents discovery selects")
     args = p.parse_args()
 
-    hospitals = discover.load_hospitals()
+    table = hospitals.by_id()
     if args.validate:
-        todo = [h for h in hospitals.values() if h.get("set") == "dev" and h.get("landing_url", "").strip()]
+        todo = [h for h in table.values() if h.get("set") == "dev" and h.get("landing_url", "").strip()]
     else:
-        todo = [h for h in hospitals.values() if not h.get("landing_url", "").strip()]
+        todo = [h for h in table.values() if not h.get("landing_url", "").strip()]
     rows, outcome = [], Counter()
     with make_client(30) as client:
         for h in sorted(todo, key=lambda x: x["hospital_id"]):
@@ -179,7 +180,7 @@ def main() -> int:
                 outcome["search failed"] += 1
                 rows.append({"hospital_id": hid, "set": h.get("set", ""), "query": query, "result": "search failed"})
                 continue
-            got, why = choose(h, discover.name_filter(hid, hospitals), rec["results"])
+            got, why = choose(h, discover.name_filter(hid, table), rec["results"])
             row = {"hospital_id": hid, "set": h.get("set", ""), "query": query,
                    "found_url": got["url"] if got else "", "found_title": got["title"] if got else "",
                    "rank": got["rank"] if got else "", "passed_over": "; ".join(why),
@@ -187,10 +188,9 @@ def main() -> int:
             if args.validate:
                 row["result"] = compare(got["url"], h["landing_url"]) if got else "nothing accepted"
                 if args.crawl and got and row["result"] != "same page":
-                    found_docs = crawl_docs(client, got["url"], hid, hospitals)
+                    found_docs = crawl_docs(client, got["url"], hid, table)
                     disc = paths.DATA / "discovered" / f"{hid}.json"
-                    known = {c["url"] for c in json.loads(disc.read_text(encoding="utf-8"))["candidates"]
-                             if c["selected"] and c["kind"] in ("pdf", "docx")} if disc.exists() else set()
+                    known = selected_docs(read_json(disc)) if disc.exists() else set()
                     row["same_documents"] = ("all" if known and found_docs >= known else
                                              "some" if found_docs & known else "none")
                     outcome[(row["result"], "documents: " + row["same_documents"])] += 1
@@ -202,13 +202,9 @@ def main() -> int:
             rows.append(row)
             print(f"{len(rows)}/{len(todo)}", file=sys.stderr, end="\r")
 
-    OUT.mkdir(parents=True, exist_ok=True)
     name = "validate.csv" if args.validate else "found.csv"
     fields = sorted({k for r in rows for k in r}, key=lambda k: list(rows[0]).index(k) if k in rows[0] else 99)
-    with open(OUT / name, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+    write_csv(OUT / name, rows, fields)
     print(f"\n{'validation (dev hospitals with a link)' if args.validate else 'hospitals without a link'}: {len(rows)}")
     for k, v in sorted(outcome.items(), key=lambda kv: -kv[1]):
         print(f"  {v:3d}  {k}")

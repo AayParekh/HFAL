@@ -16,17 +16,17 @@ The terminal shows counts only.
 """
 
 import argparse
-import csv
-import os
 import sys
-import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-RUNS = ROOT / "runs"
-DEFAULT_SHEET = ROOT / "data" / "review" / "judge_review.csv"
-HOSPITALS = ROOT / "data" / "hospitals.csv"
-HUMAN = ("human_bucket", "human_note")
+from hfal import paths
+from hfal.files import EXCEL, EXCEL_HINT, read_csv_with_fields
+from hfal.files import write_csv as _write_csv
+from hfal.hospitals import table_path
+from hfal.judge import HUMAN
+
+RUNS = paths.RUNS
+DEFAULT_SHEET = paths.DATA / "review" / "judge_review.csv"
 KEY = ("hospital_id", "criterion_id")
 
 
@@ -34,39 +34,29 @@ def read_csv(path: Path) -> tuple[list[str], list[dict]]:
     """Read a CSV written by us or saved by Excel. utf-8-sig handles the BOM; Excel's 'CSV (Comma delimited)' is
     cp1252, which is rejected with a hint rather than guessed at."""
     try:
-        with open(path, newline="", encoding="utf-8-sig") as f:
-            r = csv.DictReader(f)
-            return list(r.fieldnames or []), list(r)
+        return read_csv_with_fields(path, EXCEL)
     except UnicodeDecodeError:
-        raise SystemExit(f"{path} is not UTF-8. In Excel, save it as 'CSV UTF-8 (Comma delimited)' and try again.")
+        raise SystemExit(f"{path} {EXCEL_HINT}") from None
 
 
 def write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
     """Write atomically (temp file, then rename), utf-8-sig so Excel shows accents right, like judge.py."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", newline="", encoding="utf-8-sig") as f:
-            w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
-            w.writeheader()
-            w.writerows(rows)
-        os.replace(tmp, path)
-    except BaseException:
-        os.unlink(tmp)
-        raise
+    _write_csv(path, rows, fields, encoding=EXCEL, atomic=True)
 
 
-def hospital_names(path: Path = HOSPITALS) -> dict[str, str]:
+def hospital_names(path: Path | None = None) -> dict[str, str]:
     """hospital_id -> name from our hospital table (empty if the table is absent)."""
+    path = table_path() if path is None else path
     if not path.exists():
         return {}
     return {r["hospital_id"]: r.get("name", "") for r in read_csv(path)[1]}
 
 
-def merge(run_ids: list[str], runs_dir: Path = RUNS,
+def merge(run_ids: list[str], runs_dir: Path | None = None,
           names: dict[str, str] | None = None) -> tuple[list[str], list[dict]]:
     """One sheet from several runs' judge.csv: run_id first, then judge.csv's own columns in its order, with
     hospital_name (from data/hospitals.csv, for reading only; split ignores it) right after hospital_id."""
+    runs_dir = RUNS if runs_dir is None else runs_dir
     names = hospital_names() if names is None else names
     if len(set(run_ids)) != len(run_ids):
         raise SystemExit("the same run is listed twice")
@@ -85,9 +75,10 @@ def merge(run_ids: list[str], runs_dir: Path = RUNS,
     return ["run_id"] + fields[:i] + ["hospital_name"] + fields[i:], rows
 
 
-def split(sheet_rows: list[dict], runs_dir: Path = RUNS) -> dict:
+def split(sheet_rows: list[dict], runs_dir: Path | None = None) -> dict:
     """Plan the write-back. Returns {run_id: (fields, updated_rows)} plus counts; raises SystemExit on any mismatch
     before anything is written."""
+    runs_dir = RUNS if runs_dir is None else runs_dir
     for col in ("run_id", *KEY, *HUMAN):
         if sheet_rows and col not in sheet_rows[0]:
             raise SystemExit(f"the sheet has no `{col}` column")

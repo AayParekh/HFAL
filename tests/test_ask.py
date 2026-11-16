@@ -1,6 +1,6 @@
 import json
 
-from hfal import ask, paths
+from hfal import ask, files, model, paths
 
 
 def setup(tmp_path, monkeypatch, response):
@@ -73,14 +73,14 @@ def test_one_word_quotes_verify_for_languages_only(tmp_path, monkeypatch):
 
 def test_a_write_stopped_part_way_leaves_the_old_file_whole(tmp_path, monkeypatch):
     f = tmp_path / "answer.json"
-    ask.write_atomic(f, '{"old": true}')
+    files.write_atomic(f, '{"old": true}')
     assert f.read_text() == '{"old": true}' and not list(tmp_path.glob("*.tmp"))
 
     def stopped(*a):
         raise KeyboardInterrupt                                     # stopped between writing and swapping in
-    monkeypatch.setattr(ask.os, "replace", stopped)
+    monkeypatch.setattr(files.os, "replace", stopped)
     try:
-        ask.write_atomic(f, '{"new": true}')
+        files.write_atomic(f, '{"new": true}')
     except KeyboardInterrupt:
         pass
     assert json.loads(f.read_text()) == {"old": True}               # never half a file
@@ -137,8 +137,8 @@ def test_model_failure_is_recorded_and_the_batch_continues(tmp_path, monkeypatch
     from hfal.cli import run_ask
     monkeypatch.setattr(paths, "RUNS", tmp_path / "runs")
     ok = {"call": {"input_tokens": 1, "output_tokens": 1, "cached": True}}
-    _fake_hospitals(monkeypatch, {"1": ok, "2": ask.ModelFailed("model output hit max_output_tokens (10)"),
-                                  "3": ok, "4": ask.BadReply("not valid JSON"), "5": ok})
+    _fake_hospitals(monkeypatch, {"1": ok, "2": model.ModelFailed("model output hit max_output_tokens (10)"),
+                                  "3": ok, "4": model.BadReply("not valid JSON"), "5": ok})
     skipped, failed = run_ask(["1", "2", "3", "4", "5"], "run1")
     assert skipped == [] and [f["hospital_id"] for f in failed] == ["2", "4"]
     saved = json.loads((tmp_path / "runs" / "run1" / "failed.json").read_text())
@@ -156,7 +156,7 @@ def test_batch_stops_after_failures_in_a_row_and_still_writes_them(tmp_path, mon
     monkeypatch.setattr(paths, "RUNS", tmp_path / "runs")
     n = ask.MAX_FAILED_IN_A_ROW
     ids = [str(i) for i in range(n + 2)]
-    _fake_hospitals(monkeypatch, {h: ask.ModelFailed("declined") for h in ids})
+    _fake_hospitals(monkeypatch, {h: model.ModelFailed("declined") for h in ids})
     with pytest.raises(RuntimeError, match="in a row"):
         run_ask(ids, "run1")
     saved = json.loads((tmp_path / "runs" / "run1" / "failed.json").read_text())

@@ -1,26 +1,24 @@
-"""Ask the model every criterion for one hospital, then verify quotes in code.
+"""Ask the model every criterion for one hospital, then verify quotes and apply the code checks.
 
-call_model() is the only place that talks to a model provider. Providers (config/settings.yaml, model.provider):
-  anthropic  the Anthropic API, key in ANTHROPIC_API_KEY
-  bedrock    Claude on Amazon Bedrock through the same SDK. Credentials, in the order the SDK tries them:
-             AWS_BEARER_TOKEN_BEDROCK (a Bedrock API key), AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (/
-             AWS_SESSION_TOKEN), or model.aws_profile (e.g. an SSO profile). Needs model.aws_region and
-             model.bedrock_id (the Bedrock model / inference profile ID from the console).
-  openweight a non-Claude (open-weight) model on Amazon Bedrock, e.g. Moonshot Kimi, through InvokeModel with an
-             OpenAI-style chat body (boto3). Same settings as bedrock. The reply format is sent as response_format
-             json_schema with strict: true, the counterpart of the Claude API's structured outputs.
-Prompts, quote checks, caching and grading are identical for all three.
+This module owns the prompt (system instructions, the reply format, the documents block, the criteria text) and the
+per-hospital pipeline: load the hospital's documents, size-guard the prompt, call the model, verify every quote in
+code, run the code checks (form, FPL year, 400% statement, consistency points), and write runs/{run_id}/{id}.json.
+Talking to a provider is model.call_model's job (model.py); nothing here knows which API answered.
+
+Answers: YES, NO, N/A, UNCLEAR, NOT_FOUND. A YES or NO needs a quote that find_quote verifies verbatim against the
+extracted text; an unverified one is treated as UNCLEAR downstream (schema.effective_answer). A hospital with no
+documents gets NOT_FOUND for everything and no model call: NOT_FOUND is never NO.
 """
 
-import hashlib
-import json
 import math
-import os
 import re
 from datetime import datetime, timezone
 
-from . import consistency, formcheck, fpl, maxfpl, paths, usage
-from .schema import ANSWERS, NOT_FOUND, UNCLEAR
+from . import consistency, formcheck, fpl, maxfpl, paths
+from .files import read_json, write_json
+from .manifest import latest_manifest
+from .model import ModelFailed, call_model, model_id, provider
+from .schema import ANSWERS, NOT_FOUND, PAGE, UNCLEAR, object_schema
 from .verify import find_quote, normalize
 
 SYSTEM = """You audit a New York hospital's financial assistance materials against specific criteria.
@@ -43,17 +41,22 @@ Also report two lists. They are not graded; report only what the documents state
   per county per document, with a quote copied EXACTLY from that document that names the county.
 Use empty lists when the documents state nothing."""
 
-PAGE = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+LANGUAGES = "languages_available"     # the one criterion whose quote may be a single word (owner, Nov 12)
 
 
-def _obj(properties: dict) -> dict:
-    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+# ---------------------------------------------------------------------------------------------------------------
+# The reply format
+
+def _quoted_item(field: str) -> dict:
+    """A reported item (a language, a county): the value, where it was found, and the quote that names it."""
+    return object_schema({field: {"type": "string"}, "source_doc": {"type": "string"}, "page": PAGE,
+                          "quote": {"type": "string"}})
 
 
-# The reply format. Sent as output_config.format (structured outputs): the API guarantees the reply is valid JSON
-# in this shape. Forced tool use is not used: claude-sonnet-5-5 rejects it with a 400.
-SCHEMA = _obj({
-    "answers": {"type": "array", "items": _obj({
+# Sent as output_config.format (structured outputs): the API guarantees the reply is valid JSON in this shape.
+# Forced tool use is not used: claude-sonnet-5-5 rejects it with a 400.
+SCHEMA = object_schema({
+    "answers": {"type": "array", "items": object_schema({
         "criterion_id": {"type": "string"},
         "answer": {"type": "string", "enum": ANSWERS},
         "quote": {"type": "string"},
@@ -61,12 +64,8 @@ SCHEMA = _obj({
         "page": PAGE,
         "reason": {"type": "string"},
     })},
-    "languages": {"type": "array", "items": _obj({
-        "language": {"type": "string"}, "source_doc": {"type": "string"}, "page": PAGE, "quote": {"type": "string"},
-    })},
-    "psa_counties": {"type": "array", "items": _obj({
-        "county": {"type": "string"}, "source_doc": {"type": "string"}, "page": PAGE, "quote": {"type": "string"},
-    })},
+    "languages": {"type": "array", "items": _quoted_item("language")},
+    "psa_counties": {"type": "array", "items": _quoted_item("county")},
 })
 
 
@@ -75,64 +74,27 @@ def schema_for(points: list[dict]) -> dict:
     without them it is SCHEMA unchanged, so earlier prompt versions send exactly what they always sent."""
     if not points:
         return SCHEMA
-    item = _obj({
+    item = object_schema({
         "point": {"type": "string", "enum": [p["id"] for p in points]},
         "status": {"type": "string", "enum": consistency.STATUSES},
         "doc_a": {"type": "string"}, "page_a": PAGE, "quote_a": {"type": "string"},
         "doc_b": {"type": "string"}, "page_b": PAGE, "quote_b": {"type": "string"},
         "reason": {"type": "string"},
     })
-    return _obj({**SCHEMA["properties"], "consistency_points": {"type": "array", "items": item}})
+    return object_schema({**SCHEMA["properties"], "consistency_points": {"type": "array", "items": item}})
 
 
-_JSON_TYPES = {"object": dict, "array": list, "string": str, "null": type(None), "boolean": bool}
+def missing_criteria(reply: dict, ids) -> list[str]:
+    """The completeness check on an `ask` reply: one problem listing the criteria it left out, or none. With prompt v7
+    Claude sometimes stopped after consistent_across_posted_documents, filled consistency_points and never answered
+    the other 14 (3 of 15 pilot hospitals, Nov 12); the reply format alone does not require every criterion."""
+    given = {a.get("criterion_id") for a in reply.get("answers", [])}
+    missing = sorted(i for i in ids if i not in given)
+    return [f"{len(missing)} of {len(ids)} criteria not answered: {missing}"] if missing else []
 
 
-def schema_problems(value, schema: dict, where: str = "reply", limit: int = 5) -> list[str]:
-    """Where a parsed reply breaks the reply format, in words (empty list: it fits). Covers what our formats use:
-    type, properties / required / additionalProperties false, items, enum, anyOf.
-
-    The Claude API enforces the format itself. For non-Claude models on Bedrock enforcement depends on the API (through
-    Converse, Kimi renamed and dropped fields on long prompts, Nov 12), so every reply is checked in code."""
-    out: list[str] = []
-
-    def check(v, s, at):
-        if len(out) >= limit:
-            return
-        if "anyOf" in s:
-            if not any(not schema_problems(v, alt, at, 1) for alt in s["anyOf"]):
-                out.append(f"{at}: matches none of the allowed shapes")
-            return
-        t = s.get("type")
-        if t == "integer":
-            ok = isinstance(v, int) and not isinstance(v, bool)
-        elif t == "number":
-            ok = isinstance(v, (int, float)) and not isinstance(v, bool)
-        else:
-            ok = t is None or isinstance(v, _JSON_TYPES[t])
-        if not ok:
-            out.append(f"{at}: expected {t}, got {type(v).__name__}")
-            return
-        if "enum" in s and v not in s["enum"]:
-            out.append(f"{at}: {str(v)[:40]!r} is not one of {s['enum']}")
-        if t == "object":
-            props = s.get("properties", {})
-            missing = [k for k in s.get("required", []) if k not in v]
-            extra = [k for k in v if k not in props] if s.get("additionalProperties") is False else []
-            if missing:
-                out.append(f"{at}: missing {missing}")
-            if extra:
-                out.append(f"{at}: unexpected {extra}")
-            for k, sub in props.items():
-                if k in v:
-                    check(v[k], sub, f"{at}.{k}")
-        if t == "array" and "items" in s:
-            for i, item in enumerate(v):
-                check(item, s["items"], f"{at}[{i}]")
-
-    check(value, schema, where)
-    return out
-
+# ---------------------------------------------------------------------------------------------------------------
+# Prompt size
 
 class TooLarge(RuntimeError):
     """A hospital's prompt would use more of the context window than settings.yaml allows. Never truncated."""
@@ -141,13 +103,6 @@ class TooLarge(RuntimeError):
         super().__init__(f"{hospital_id}: about {est_tokens} tokens exceeds the limit of {limit_tokens} "
                          f"(max_input_share of context_window_tokens); not asked, not truncated")
         self.item = {"hospital_id": hospital_id, "est_tokens": est_tokens, "limit_tokens": limit_tokens}
-
-
-class ModelFailed(RuntimeError):
-    """The model was called (and billed) but gave no usable answer for this one prompt: it hit max_output_tokens,
-    declined, or replied outside the reply format (BadReply, after the retry). A batch records it and carries on
-    (iter_ask). Connection, sign-in and rate-limit errors are plain RuntimeErrors: they would fail every hospital, so
-    they still stop a batch at once."""
 
 
 def input_limit_tokens(cfg_all: dict, section: str = "model") -> int:
@@ -167,6 +122,16 @@ def estimate_tokens(chars: int, cfg_all: dict) -> int:
     return math.ceil(chars / cfg_all["chars_per_token"])
 
 
+def check_size(hospital_id: str, prompt_chars: int, cfg_all: dict, section: str = "model") -> None:
+    """Raise TooLarge when a prompt of this many characters is over the limit for the model in `section`."""
+    est, limit = estimate_tokens(prompt_chars, cfg_all), input_limit_tokens(cfg_all, section)
+    if est > limit:
+        raise TooLarge(hospital_id, est, limit)     # never truncate; the caller skips and records it
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The system prompt (the same for every hospital) and the user prompt (the documents and the criteria)
+
 def reference_block() -> str:
     """The reference material for every hospital: the state's blank application in a <reference_form> block and the
     official poverty figures in a <reference_fpl> block. Each is empty when the criteria file does not name it."""
@@ -177,379 +142,35 @@ def reference_block() -> str:
 
 
 def system_prompt() -> str:
-    """The base instructions, the consistency points, the reading rules and the state's blank application, each
-    from the criteria file (each empty when the criteria file does not name it). The same for every hospital."""
+    """The base instructions, the consistency points, the reading rules and the reference material, each from the
+    criteria file (each empty when the criteria file does not name it). The same for every hospital."""
     points = paths.consistency_points()
-    base = SYSTEM + ("\n\n" + consistency.prompt_block(points) if points else "")
-    rules, form = paths.reading_rules(), reference_block()
-    return base + ("\n\n" + rules if rules else "") + ("\n\n" + form if form else "")
-
-
-PROVIDERS = ("anthropic", "bedrock", "openweight")
-AWS_PROVIDERS = ("bedrock", "openweight")
-
-
-def provider(cfg: dict) -> str:
-    p = cfg.get("provider", "anthropic")
-    if p not in PROVIDERS:
-        raise ValueError(f"model.provider must be one of {', '.join(PROVIDERS)}, got {p!r}")
-    return p
-
-
-def model_id(cfg: dict) -> str:
-    """The model name to send: model.name for Anthropic, model.bedrock_id for Bedrock (Claude or open-weight)."""
-    if provider(cfg) in AWS_PROVIDERS:
-        mid = (cfg.get("bedrock_id") or "").strip()
-        if not mid or mid.startswith("<"):
-            raise ValueError("model.bedrock_id is not set in config/settings.yaml: copy the model / inference "
-                             "profile ID from the Bedrock console (Model catalog)")
-        return mid
-    return cfg["name"]
-
-
-def make_client(cfg: dict):
-    """The SDK client for cfg's provider. Tests replace this with a fake."""
-    prov = provider(cfg)
-    if prov in AWS_PROVIDERS and not cfg.get("aws_region"):
-        raise ValueError("model.aws_region is not set in config/settings.yaml (e.g. us-east-1)")
-    if prov == "openweight":
-        import boto3
-        from botocore.config import Config
-
-        # One call reads a whole hospital and the model thinks first: minutes, not seconds, so a long read timeout.
-        # Throttling is retried with backoff (adaptive mode).
-        session = boto3.session.Session(profile_name=cfg.get("aws_profile") or None)
-        return session.client("bedrock-runtime", region_name=cfg["aws_region"],
-                              config=Config(read_timeout=900, connect_timeout=30,
-                                            retries={"max_attempts": 5, "mode": "adaptive"}))
-    import anthropic
-
-    if prov == "bedrock":
-        return anthropic.AnthropicBedrock(aws_region=cfg["aws_region"], aws_profile=cfg.get("aws_profile"))
-    return anthropic.Anthropic()
-
-
-def explain_error(prov: str, status: int | None, message: str) -> str:
-    """A plain-language hint for the failures people actually hit when setting up a provider."""
-    m = (message or "").lower()
-    if status == 401 or "authentication" in m or "security token" in m or "credentials" in m:
-        return ("authentication failed: " + ("set ANTHROPIC_API_KEY in this terminal" if prov == "anthropic" else
-                "check AWS_BEARER_TOKEN_BEDROCK or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (or model.aws_profile "
-                "and `aws sso login`), and that the key belongs to the region in model.aws_region"))
-    if prov in AWS_PROVIDERS and (status == 403 or "accessdenied" in m or "not authorized" in m
-                                  or "access denied" in m or "not available for this account" in m):
-        return ("access denied: in the Bedrock console request access to this model in this region, and "
-                "make sure the IAM user/role is allowed bedrock:InvokeModel on it")
-    if status == 404 or "model" in m and ("not found" in m or "invalid" in m or "identifier" in m):
-        return ("model not found: " + ("check model.name in config/settings.yaml" if prov == "anthropic" else
-                "check model.bedrock_id (newer models need a regional inference profile ID such as "
-                "us.anthropic.<model>) and model.aws_region"))
-    if status == 400 and "credit" in m:
-        return "credit balance too low: add credits in the Anthropic Console"
-    if status == 429 or "throttl" in m or "rate" in m and "limit" in m:
-        return "rate limited: wait a minute and rerun (answers already received are cached)"
-    return ""
-
-
-def _create(client, cfg: dict, stream: bool = False, **kwargs):
-    """messages.create with the configured model. The SDK no longer takes a temperature argument, so one is
-    sent (as an extra body field) only when model.temperature is set in settings.yaml.
-
-    stream: send the request as a stream and return the final message (the same reply). The SDK refuses a
-    non-streaming request whose max_tokens could take over 10 minutes (above about 21K tokens), and a v7 answer with
-    its thinking can pass 16K (Nov 12), so the real calls stream; ping does not need to."""
-    import anthropic
-
-    prov = provider(cfg)
-    if cfg.get("temperature") is not None:
-        kwargs["extra_body"] = {"temperature": cfg["temperature"]}
-    try:
-        if stream:
-            with client.messages.stream(model=model_id(cfg), **kwargs) as s:
-                return s.get_final_message()
-        return client.messages.create(model=model_id(cfg), **kwargs)
-    except anthropic.APIStatusError as e:
-        hint = explain_error(prov, e.status_code, str(e))
-        raise RuntimeError(f"{prov} call failed ({e.status_code}): {hint or e}") from e
-    except anthropic.APIConnectionError as e:
-        raise RuntimeError(f"{prov} call failed: could not connect ({e}). Check the network and, for Bedrock, "
-                           f"model.aws_region") from e
-    except Exception as e:      # missing credentials surface as plain exceptions from botocore
-        hint = explain_error(prov, None, f"{type(e).__name__} {e}")
-        if hint:
-            raise RuntimeError(f"{prov} call failed: {hint}") from e
-        raise
-
-
-def prompt_cache(cfg: dict) -> bool:
-    """Whether to ask the provider to cache the system prompt (settings `prompt_cache`, on unless set to false).
-
-    The system prompt (instructions, reading rules, the state's blank form, the poverty figures; 5,952 Claude tokens,
-    4,006 Kimi tokens, measured Nov 12) is the same for every hospital, so after the first call the provider reads it from its cache at a fraction of the
-    input price (prices in settings.yaml). Each hospital's documents come after it and are never cached. The model
-    reads exactly the same text either way, so answers do not change, and the setting is not part of the response
-    cache key."""
-    return cfg.get("prompt_cache", True) is not False
-
-
-# Claude: one-hour cache. One call can take minutes and calls for a batch start one after another, so the default
-# five minutes could lapse between two hospitals; the hour costs one write at 2x the input price instead of 1.25x.
-CLAUDE_CACHE = {"type": "ephemeral", "ttl": "1h"}
-
-
-def claude_system(system: str, cfg: dict):
-    """The system prompt for the Claude API: one text block with a cache checkpoint at its end when caching is on."""
-    if not prompt_cache(cfg):
-        return system
-    return [{"type": "text", "text": system, "cache_control": CLAUDE_CACHE}]
-
-
-def token_counts(prov: str, u) -> dict:
-    """input_tokens (the whole prompt, cached part included, as before caching), output_tokens, and how many input
-    tokens were read from (cache_read_tokens) or written to (cache_write_tokens) the provider's prompt cache.
-
-    The Claude API's input_tokens counts only the tokens that were neither read nor written, so the three are added
-    up; the open-weight reply (_invoke_openweight) already counts the whole prompt."""
-    read = getattr(u, "cache_read_input_tokens", None) or getattr(u, "cache_read", 0) or 0
-    write = getattr(u, "cache_creation_input_tokens", None) or getattr(u, "cache_write", 0) or 0
-    total = u.input_tokens + (read + write if prov != "openweight" else 0)
-    return {"input_tokens": total, "output_tokens": u.output_tokens,
-            "cache_read_tokens": read, "cache_write_tokens": write}
-
-
-# finish_reason values of the OpenAI-style reply, in the Claude API's words, so call_model treats both the same way.
-# A reply blocked by a content filter is handled like a refusal; one cut off by length like one cut off by max_tokens.
-OPENWEIGHT_STOP = {"stop": "end_turn", "length": "max_tokens", "content_filter": "refusal"}
-
-
-def _invoke_openweight(client, cfg: dict, system: str | None, user: str, max_tokens: int,
-                       schema: dict | None = None, effort: str | None = None):
-    """One InvokeModel call to an open-weight model on Bedrock (OpenAI-style chat body), returned in the shape of a
-    Claude API response (model, stop_reason, content, usage), so the rest of call_model does not care which API
-    answered. The model's reasoning is not kept.
-
-    Why InvokeModel and not Converse (Nov 12): both accept a JSON-schema reply format for Kimi, but through Converse it
-    was not enforced on hospital-sized prompts (fields renamed or dropped, JSON in a code fence: 5 of 5 real replies),
-    while InvokeModel's response_format with strict: true returned exact JSON for both Kimi models on the largest test
-    hospital (65K tokens). The prompt is exactly the one Claude gets; no format instructions are added."""
-    from types import SimpleNamespace as NS
-
-    from botocore.exceptions import BotoCoreError, ClientError
-
-    prov = provider(cfg)
-    if system and prompt_cache(cfg):
-        # Prompt caching (Nov 12): a cache checkpoint at the end of the system prompt, which is the same for every
-        # hospital, and explicit mode, so Bedrock does not also write each hospital's own documents to the cache (a
-        # write costs more than plain input and is never read back). Field names from AWS's prompt caching guide;
-        # confirmed on Kimi K3.1 by a live call (Nov 12: second call read the whole system prompt from the cache).
-        sys_msg = {"role": "system", "content": [{"type": "text", "text": system,
-                                                  "prompt_cache_breakpoint": {"mode": "explicit"}}]}
-    else:
-        sys_msg = {"role": "system", "content": system}
-    body = {"messages": ([sys_msg] if system else []) + [{"role": "user", "content": user}],
-            "max_tokens": max_tokens}
-    if system and prompt_cache(cfg):
-        body["prompt_cache_options"] = {"mode": "explicit"}
-    if cfg.get("temperature") is not None:
-        body["temperature"] = cfg["temperature"]
-    if effort:
-        body["reasoning_effort"] = effort       # Kimi's model card: low ... max; its default is max
-    if schema is not None:
-        body["response_format"] = {"type": "json_schema",
-                                   "json_schema": {"name": "reply", "schema": schema, "strict": True}}
-    try:
-        r = client.invoke_model(modelId=model_id(cfg), body=json.dumps(body))
-        out = json.loads(r["body"].read())
-    except ClientError as e:
-        status = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-        msg = f"{e.response.get('Error', {}).get('Code', '')} {e.response.get('Error', {}).get('Message', '')}"
-        hint = explain_error(prov, status, msg)
-        raise RuntimeError(f"{prov} call failed ({status}): {hint or msg}") from e
-    except BotoCoreError as e:      # no credentials, expired SSO sign-in, network
-        hint = explain_error(prov, None, f"{type(e).__name__} {e}")
-        raise RuntimeError(f"{prov} call failed: {hint or e}") from e
-    choice = out["choices"][0]
-    text = _strip_fence(choice.get("message", {}).get("content") or "")
-    stop = choice.get("finish_reason") or ""
-    u = out.get("usage", {})
-    # prompt_tokens is the whole prompt, the cached part included (OpenAI convention, as AWS describes it). The cache
-    # counts sit in prompt_tokens_details (Chat Completions) or input_tokens_details (Responses); both are looked at.
-    details = {**(u.get("input_tokens_details") or {}), **(u.get("prompt_tokens_details") or {})}
-    return NS(model=model_id(cfg), stop_reason=OPENWEIGHT_STOP.get(stop, stop),
-              content=[NS(type="text", text=text)],
-              usage=NS(input_tokens=u.get("prompt_tokens", 0), output_tokens=u.get("completion_tokens", 0),
-                       cache_read=details.get("cached_tokens") or 0,
-                       cache_write=details.get("cache_write_tokens") or 0),
-              stop_details=NS(category=stop))
-
-
-def _strip_fence(text: str) -> str:
-    """JSON wrapped in one markdown code fence (```json ... ```), as Kimi K3 sent it through Converse, unwrapped. Anything else is
-    returned as it is. The result must still be JSON that passes schema_problems."""
-    m = re.fullmatch(r"\s*```(?:json)?\s*\n(.*?)\n?```\s*", text, flags=re.S)
-    return m.group(1) if m else text
-
-
-def call_model(system: str, user: str, cfg: dict, schema: dict | None = None,
-               tag: dict | None = None, check=None) -> tuple[dict, dict]:
-    """Single provider boundary. Returns (parsed JSON reply, call info). Cached on disk so reruns are free.
-
-    schema: the JSON shape of the reply (default: the `ask` answers). `hfal judge` passes its own.
-    tag: {"purpose", "run_id", "hospital_id"}, written beside the call in the usage ledger (usage.py). Every call
-    that reaches the provider is a ledger row, including one that then fails; a cached answer is not.
-    check: optional function(reply) -> list of problems the schema cannot express (`ask`: a criterion left out). A
-    reply with problems is never used (IncompleteReply): kept in bad_replies/ and asked once more, for every provider.
-    A cached reply that fails it is moved to bad_replies/ and asked again. Not part of the cache key.
-
-    Call info: provider, model, stop_reason, input/output token counts, cached (True when read from disk).
-    The cache key includes the provider and model ID, so switching providers never reuses the other's answers.
-    """
-    schema = schema or SCHEMA
-    prov, mid = provider(cfg), model_id(cfg)
-    key = hashlib.sha256(json.dumps([prov, mid, cfg.get("temperature"), cfg.get("effort"), system, user, schema],
-                                    sort_keys=True).encode()).hexdigest()
-    cache_file = paths.CACHE / f"{key}.json"
-    if cache_file.exists():
-        saved = json.loads(cache_file.read_text(encoding="utf-8"))
-        problems = schema_problems(saved["tool_input"], schema)
-        if problems:       # saved before replies were checked; never used as an answer
-            raise RuntimeError(f"cached reply {cache_file} does not fit the reply format ({'; '.join(problems)}); "
-                               f"move it to {paths.CACHE / 'bad_replies'} and ask again")
-        problems = check(saved["tool_input"]) if check else []
-        if not problems:
-            return saved["tool_input"], {**saved["info"], "cached": True}
-        moved = paths.CACHE / "bad_replies" / f"{key}-cached.json"       # cached before replies were checked this way
-        moved.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.replace(moved)
-        print(f"  cached reply is incomplete ({'; '.join(problems)[:160]}); moved to {moved}; asking again")
-
-    # One more try when a reply breaks: open-weight replies on any format problem (enforcement on Bedrock has failed
-    # before); every provider when the reply is incomplete (Claude left criteria out with prompt v7, Nov 12). Each try
-    # is billed and is its own ledger row; each broken reply is kept in bad_replies/.
-    for attempt in (1, 2):
-        try:
-            return _call_once(system, user, cfg, schema, tag, key, cache_file, attempt, check)
-        except BadReply as e:
-            if attempt == 2 or not (prov == "openweight" or isinstance(e, IncompleteReply)):
-                raise
-
-
-def write_atomic(path, text: str) -> None:
-    """Write a file so that it is either the old one or the whole new one, never half of it: a run stopped part-way
-    (final_run.py's budget stop, Ctrl-C) cannot leave a half-written answer that would break the next read. The
-    temporary name ends in .tmp, so it is never mistaken for an answer (*.json)."""
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
-
-
-class BadReply(ModelFailed):
-    """The model answered, but not in the reply format (not JSON, or JSON in another shape). Billed; not saved."""
-
-
-class IncompleteReply(BadReply):
-    """The reply fits the format but fails the caller's check (e.g. criteria left out). Billed; not saved."""
-
-
-def _call_once(system: str, user: str, cfg: dict, schema: dict, tag: dict | None, key: str, cache_file,
-               attempt: int, check=None) -> tuple[dict, dict]:
-    """One billed call: send, log in the ledger, check the reply, cache it. Errors for anything not usable."""
-    prov, mid = provider(cfg), model_id(cfg)
-    if prov == "openweight":
-        resp = _invoke_openweight(make_client(cfg), cfg, system, user, cfg["max_output_tokens"], schema=schema,
-                         effort=cfg.get("effort"))
-    else:
-        output_config = {"format": {"type": "json_schema", "schema": schema}}
-        if cfg.get("effort"):
-            output_config["effort"] = cfg["effort"]          # thinking depth; the model's own default when unset
-        resp = _create(
-            make_client(cfg), cfg, stream=True,
-            max_tokens=cfg["max_output_tokens"],
-            system=claude_system(system, cfg),
-            messages=[{"role": "user", "content": user}],
-            output_config=output_config,
-        )
-    info = {"provider": prov, "model": resp.model or mid, "temperature": cfg.get("temperature"),
-            "effort": cfg.get("effort"), "stop_reason": resp.stop_reason, **token_counts(prov, resp.usage)}
-    text = next((b.text for b in resp.content if b.type == "text"), "")
-    status, result, bad_json, problems = "ok", None, None, []
-    if resp.stop_reason == "refusal":
-        status = "refusal"
-    elif resp.stop_reason == "max_tokens":      # thinking tokens count toward this limit too
-        status = "max_tokens"
-    else:
-        try:
-            result = json.loads(text)
-        except ValueError as e:
-            status, bad_json = "bad_json", e
-        else:
-            problems = schema_problems(result, schema)
-            if problems:
-                status = "bad_schema"
-            elif check and (problems := check(result)):
-                status = "incomplete"
-    usage.log_call(info, status, {**(tag or {}), "purpose": (tag or {}).get("purpose", "call")})   # billed either way
-    if status == "refusal":     # open-weight: a content filter (category names the stop reason)
-        category = getattr(getattr(resp, "stop_details", None), "category", None)
-        raise ModelFailed(f"the model declined this request (category: {category}); nothing was saved")
-    if status == "max_tokens":
-        raise ModelFailed(f"model output hit max_output_tokens ({cfg['max_output_tokens']}); raise it in settings.yaml")
-    if status in ("bad_json", "bad_schema", "incomplete"):   # keep the raw reply (billed); never used as an answer
-        bad = paths.CACHE / "bad_replies" / f"{key}-{attempt}.txt"
-        bad.parent.mkdir(parents=True, exist_ok=True)
-        bad.write_text(f"provider: {prov}\nmodel: {mid}\nattempt: {attempt}\nstop_reason: {resp.stop_reason}\n"
-                       f"output_tokens: {info['output_tokens']}\nproblems: {'; '.join(problems)}\n---\n{text}",
-                       encoding="utf-8")
-        what = (f"was not valid JSON ({bad_json})" if bad_json else
-                f"is incomplete ({'; '.join(problems)})" if status == "incomplete" else
-                f"does not fit the reply format ({'; '.join(problems)})")
-        print(f"  reply {attempt} {what[:160]}; raw reply kept: {bad}")
-        raise (IncompleteReply if status == "incomplete" else BadReply)(
-            f"the model's reply {what}; no answer was saved. Raw reply ({len(text)} characters): {bad}") from bad_json
-    paths.CACHE.mkdir(parents=True, exist_ok=True)
-    write_atomic(cache_file, json.dumps({"tool_input": result, "info": info}))
-    return result, {**info, "cached": False}
-
-
-def ping(cfg: dict) -> dict:
-    """A tiny request (a few tokens) to check credentials, region and model access before a real run."""
-    question = "Reply with the single word: ready"
-    if provider(cfg) == "openweight":     # a thinking model spends some tokens on reasoning first: allow for it
-        resp = _invoke_openweight(make_client(cfg), cfg, None, question, 1000)
-    else:
-        extra = {"output_config": {"effort": "low"}} if cfg.get("effort") else {}   # a model that takes effort at all
-        resp = _create(make_client(cfg), cfg, max_tokens=200, **extra,
-                       messages=[{"role": "user", "content": question}])
-    text = "".join(getattr(b, "text", "") for b in resp.content).strip()
-    usage.log_call({"provider": provider(cfg), "model": model_id(cfg), "effort": None,
-                    "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens},
-                   "ok", {"purpose": "ping"})
-    return {"provider": provider(cfg), "model_id": model_id(cfg), "region": cfg.get("aws_region", ""),
-            "reply": text[:40], "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens}
+    parts = [SYSTEM, consistency.prompt_block(points) if points else "", paths.reading_rules(), reference_block()]
+    return "\n\n".join(p for p in parts if p)
 
 
 def load_documents(hospital_id: str) -> list[dict]:
     """Extracted documents in the hospital's latest manifest only.
 
     Older text files stay on disk (content-addressed), but a document that discovery no longer selects,
-    or a site no longer serves, must not reach the model.
+    or a site no longer serves, must not reach the model. Each document carries its type tags and whether it was
+    fetched although robots.txt disallows it, or with the headless browser (both reported, never hidden).
     """
-    from .fetch import latest_manifest
-
-    current: dict[str, bool] = {}       # sha8 -> fetched although robots.txt disallows it
+    robots: dict[str, bool] = {}        # sha8 -> fetched although robots.txt disallows it
     browser: dict[str, bool] = {}       # sha8 -> fetched with the headless browser (since Nov 14)
-    for i in latest_manifest(hospital_id):
-        current[i["sha8"]] = current.get(i["sha8"], False) or bool(i.get("robots_disallowed"))
-        browser[i["sha8"]] = browser.get(i["sha8"], False) or bool(i.get("fetched_with_browser"))
+    for entry in latest_manifest(hospital_id):
+        sha8 = entry["sha8"]
+        robots[sha8] = robots.get(sha8, False) or bool(entry.get("robots_disallowed"))
+        browser[sha8] = browser.get(sha8, False) or bool(entry.get("fetched_with_browser"))
     tags_file = paths.TAGS / f"{hospital_id}.json"
-    tags = json.loads(tags_file.read_text(encoding="utf-8")) if tags_file.exists() else {}
+    tags = read_json(tags_file) if tags_file.exists() else {}
     docs = []
     for f in sorted((paths.TEXT / hospital_id).glob("*.json")):
-        if f.stem not in current:
+        if f.stem not in robots:
             continue
-        d = json.loads(f.read_text(encoding="utf-8"))
+        d = read_json(f)
         d["types"] = tags.get(d["sha8"], {}).get("types", [])
-        d["robots_disallowed"] = current[f.stem]
+        d["robots_disallowed"] = robots[f.stem]
         d["fetched_with_browser"] = browser[f.stem]
         docs.append(d)
     return docs
@@ -566,21 +187,8 @@ def render_documents(docs: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def missing_criteria(reply: dict, ids) -> list[str]:
-    """The completeness check on an `ask` reply: one problem listing the criteria it left out, or none. With prompt v7
-    Claude sometimes stopped after consistent_across_posted_documents, filled consistency_points and never answered
-    the other 14 (3 of 15 pilot hospitals, Nov 12); the reply format alone does not require every criterion."""
-    given = {a.get("criterion_id") for a in reply.get("answers", [])}
-    missing = sorted(i for i in ids if i not in given)
-    return [f"{len(missing)} of {len(ids)} criteria not answered: {missing}"] if missing else []
-
-
-def build_prompt(docs: list[dict], criteria: list[dict]) -> str:
-    crit = "\n".join(format_criterion(c) for c in criteria)
-    return render_documents(docs) + f"\n\nCriteria (answer every one):\n{crit}"
-
-
 def format_criterion(c: dict) -> str:
+    """One criterion as the model reads it: question, background, ordered checks, what YES and NO mean, notes."""
     lines = [f'- {c["id"]}: {c["question"]}']
     if c.get("guidance"):
         lines.append(f'    Background: {c["guidance"]}')
@@ -594,10 +202,15 @@ def format_criterion(c: dict) -> str:
     return "\n".join(lines)
 
 
-LANGUAGES = "languages_available"
+def build_prompt(docs: list[dict], criteria: list[dict]) -> str:
+    crit = "\n".join(format_criterion(c) for c in criteria)
+    return render_documents(docs) + f"\n\nCriteria (answer every one):\n{crit}"
 
 
-def _verify(item: dict, docs: list[dict], by_id: dict, allow_word: bool = False) -> dict:
+# ---------------------------------------------------------------------------------------------------------------
+# Quote verification of the model's items
+
+def verify_item(item: dict, docs: list[dict], allow_word: bool = False) -> dict:
     """Check item["quote"] verbatim against its cited document (or, if the id is unknown, every document).
 
     allow_word (languages only): a one-word quote such as "Arabic" counts when the cited document has it as a whole
@@ -611,10 +224,68 @@ def _verify(item: dict, docs: list[dict], by_id: dict, allow_word: bool = False)
     return {**item, "quote_verified": False}
 
 
+def verified_values(items: list[dict], field: str) -> list[str]:
+    """The distinct verified values of a reported list ("Spanish", "Kings"), title-cased and sorted. Shared by the
+    grades CSV, the report and the per-document view, so every output names the same languages and counties."""
+    return sorted({x[field].strip().title() for x in items if x.get("quote_verified") and (x.get(field) or "").strip()})
+
+
+def reported_by_document(result: dict, key: str, field: str) -> dict[str, list[str]]:
+    """{document url: sorted verified values} for a reported list, e.g. languages per document."""
+    urls = {d["sha8"]: d["url"] for d in result.get("documents", [])}
+    by_url: dict[str, list[dict]] = {}
+    for x in result.get("reported", {}).get(key, []):
+        by_url.setdefault(urls.get(x["source_doc"], x["source_doc"]), []).append(x)
+    return {u: verified_values(items, field) for u, items in sorted(by_url.items()) if verified_values(items, field)}
+
+
 def _links_languages(hospital_id: str) -> list[str]:
     """Languages of translated links found by discovery (no model involved)."""
     f = paths.DATA / "discovered" / f"{hospital_id}.json"
-    return json.loads(f.read_text(encoding="utf-8")).get("languages_seen", []) if f.exists() else []
+    return read_json(f).get("languages_seen", []) if f.exists() else []
+
+
+def _no_answer(criterion_id: str, answer: str, reason: str) -> dict:
+    """An answer record made by code when the model gave none (nothing collected, or a criterion left out)."""
+    return dict(criterion_id=criterion_id, answer=answer, quote="", source_doc="", page=None, reason=reason,
+                quote_verified=False)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The code checks that may change an answer (each module documents its own rule)
+
+def _apply_code_checks(answers: dict[str, dict], raw: dict, docs: list[dict], cfg_all: dict,
+                       points: list[dict]) -> dict:
+    """Run the form, FPL, max-FPL and consistency checks on the model's answers (changed in place). Returns the four
+    check records for the run file (None where a check did not apply)."""
+    checks = {"form_check": None, "fpl_check": None, "max_fpl_check": None, "consistency_check": None}
+    form_cfg, reference = cfg_all.get("form_check"), paths.reference_form()
+    best = formcheck.best_match(reference, docs) if form_cfg and reference else None
+    if best:
+        checks["form_check"] = formcheck.record(best, form_cfg)
+        if formcheck.CRITERION in answers:
+            answers[formcheck.CRITERION], _ = formcheck.apply(answers[formcheck.CRITERION], reference, docs, form_cfg, best)
+    # the application = the document that best matches the state form (by content, not by keyword tags)
+    app = next((d for d in docs if best and d["sha8"] == best["sha8"] and best["share"] >= 0.5), None)
+    fpl_cfg = cfg_all.get("fpl_check")
+    if best and fpl_cfg and fpl.CRITERION in answers:
+        answers[fpl.CRITERION], checks["fpl_check"] = fpl.apply(answers[fpl.CRITERION], app, fpl_cfg)
+    if best and cfg_all.get("max_fpl_check") and maxfpl.CRITERION in answers:
+        answers[maxfpl.CRITERION], checks["max_fpl_check"] = maxfpl.apply(answers[maxfpl.CRITERION], app)
+    if points and consistency.CRITERION in answers:
+        checks["consistency_check"] = consistency.check(raw.get("consistency_points"), points, docs)
+        answers[consistency.CRITERION] = consistency.apply(answers[consistency.CRITERION], checks["consistency_check"])
+    return checks
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# One hospital
+
+def _document_summary(d: dict) -> dict:
+    """What the run file records about each document the model saw."""
+    return {"sha8": d["sha8"], "url": d["source_url"], "types": d["types"], "needs_ocr": d["needs_ocr"],
+            "ocr": bool(d.get("ocr")), "robots_disallowed": bool(d.get("robots_disallowed")),
+            "fetched_with_browser": bool(d.get("fetched_with_browser"))}
 
 
 def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
@@ -626,61 +297,37 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
     criteria = paths.criteria()
     docs = load_documents(hospital_id)
     ids = {c["id"] for c in criteria}
+    points = paths.consistency_points()
 
     answers: dict[str, dict] = {}
     reported = {"languages": [], "psa_counties": [], "languages_from_links": _links_languages(hospital_id)}
     call_info = None
-    form_check = None       # the match to the state form, when the criteria file has a reference form
-    fpl_check = None        # which year's poverty figures the application uses (same condition)
-    max_fpl_check = None    # whether the application says assistance reaches 400% (same condition)
-    consistency_check = None  # the points compared one by one, when the criteria file has consistency_points
-    points = paths.consistency_points()
+    checks = {"form_check": None, "fpl_check": None, "max_fpl_check": None, "consistency_check": None}
     prompt_chars = 0
     if not docs and dry_run:
         return {"hospital_id": hospital_id, "documents": 0, "prompt_chars": 0, "approx_input_tokens": 0}
     if not docs:
         # Nothing was collected: that is NOT_FOUND, never NO, and needs no API call.
         for c in criteria:
-            answers[c["id"]] = dict(criterion_id=c["id"], answer=NOT_FOUND, quote="", source_doc="",
-                                    page=None, reason="no documents collected", quote_verified=False)
+            answers[c["id"]] = _no_answer(c["id"], NOT_FOUND, "no documents collected")
     else:
-        prompt = build_prompt(docs, criteria)
-        system = system_prompt()
+        prompt, system = build_prompt(docs, criteria), system_prompt()
         prompt_chars = len(prompt) + len(system)
-        est, limit = estimate_tokens(prompt_chars, cfg_all), input_limit_tokens(cfg_all)
-        if est > limit:
-            raise TooLarge(hospital_id, est, limit)     # never truncate; the caller skips and records it
+        check_size(hospital_id, prompt_chars, cfg_all)
         if dry_run:
             return {"hospital_id": hospital_id, "documents": len(docs), "prompt_chars": prompt_chars,
                     "approx_input_tokens": prompt_chars // 4}
         raw, call_info = call_model(system, prompt, cfg_all["model"], schema=schema_for(points),
                                     tag={"purpose": "ask", "run_id": run_id, "hospital_id": hospital_id},
                                     check=lambda reply: missing_criteria(reply, ids))
-        by_id = {d["sha8"]: d for d in docs}
         for a in raw.get("answers", []):
             if a.get("criterion_id") in ids:
-                answers[a["criterion_id"]] = _verify(a, docs, by_id, allow_word=a["criterion_id"] == LANGUAGES)
+                answers[a["criterion_id"]] = verify_item(a, docs, allow_word=a["criterion_id"] == LANGUAGES)
         for c in criteria:  # never reached since the completeness check (call_model's check); kept as a backstop
-            answers.setdefault(c["id"], dict(criterion_id=c["id"], answer=UNCLEAR, quote="", source_doc="",
-                                             page=None, reason="model returned no answer", quote_verified=False))
-        form_cfg, reference = cfg_all.get("form_check"), paths.reference_form()
-        best = formcheck.best_match(reference, docs) if form_cfg and reference else None
-        if best:
-            form_check = formcheck.record(best, form_cfg)
-            if formcheck.CRITERION in answers:
-                answers[formcheck.CRITERION], _ = formcheck.apply(answers[formcheck.CRITERION], reference, docs, form_cfg, best)
-        # the application = the document that best matches the state form (by content, not by keyword tags)
-        app = next((d for d in docs if best and d["sha8"] == best["sha8"] and best["share"] >= 0.5), None)
-        fpl_cfg = cfg_all.get("fpl_check")
-        if best and fpl_cfg and fpl.CRITERION in answers:
-            answers[fpl.CRITERION], fpl_check = fpl.apply(answers[fpl.CRITERION], app, fpl_cfg)
-        if best and cfg_all.get("max_fpl_check") and maxfpl.CRITERION in answers:
-            answers[maxfpl.CRITERION], max_fpl_check = maxfpl.apply(answers[maxfpl.CRITERION], app)
-        if points and consistency.CRITERION in answers:
-            consistency_check = consistency.check(raw.get("consistency_points"), points, docs)
-            answers[consistency.CRITERION] = consistency.apply(answers[consistency.CRITERION], consistency_check)
-        reported["languages"] = [_verify(x, docs, by_id, allow_word=True) for x in raw.get("languages", [])]
-        reported["psa_counties"] = [_verify(x, docs, by_id) for x in raw.get("psa_counties", [])]
+            answers.setdefault(c["id"], _no_answer(c["id"], UNCLEAR, "model returned no answer"))
+        checks = _apply_code_checks(answers, raw, docs, cfg_all, points)
+        reported["languages"] = [verify_item(x, docs, allow_word=True) for x in raw.get("languages", [])]
+        reported["psa_counties"] = [verify_item(x, docs) for x in raw.get("psa_counties", [])]
 
     result = {
         "hospital_id": hospital_id,
@@ -690,22 +337,17 @@ def ask_hospital(hospital_id: str, run_id: str, dry_run: bool = False) -> dict:
         "prompt_version": cfg_all["prompt_version"],
         "call": call_info,
         "prompt_chars": prompt_chars,     # input size, for the error-rate-by-prompt-size analysis
-        "documents": [{"sha8": d["sha8"], "url": d["source_url"], "types": d["types"],
-                       "needs_ocr": d["needs_ocr"], "ocr": bool(d.get("ocr")),
-                       "robots_disallowed": bool(d.get("robots_disallowed")),
-                       "fetched_with_browser": bool(d.get("fetched_with_browser"))} for d in docs],
+        "documents": [_document_summary(d) for d in docs],
         "answers": list(answers.values()),
-        "form_check": form_check,
-        "fpl_check": fpl_check,
-        "max_fpl_check": max_fpl_check,
-        "consistency_check": consistency_check,
+        **checks,
         "reported": reported,
     }
-    out = paths.RUNS / run_id / f"{hospital_id}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    write_atomic(out, json.dumps(result, indent=2, ensure_ascii=False))
+    write_json(paths.RUNS / run_id / f"{hospital_id}.json", result, ensure_ascii=False, atomic=True)
     return result
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# A batch of hospitals and the run-level files
 
 # A batch stops after this many hospitals in a row gave no usable answer: then something is wrong for every hospital
 # (an output limit too low for the model, a broken reply format), and each failure is billed.
@@ -742,9 +384,7 @@ def iter_ask(ids: list[str], run_id: str, dry_run: bool = False):
 def write_skipped(run_id: str, skipped: list[dict]) -> None:
     """runs/RUN_ID/skipped.json: hospitals not asked because they were too large. Attrition reads it."""
     if skipped:
-        out = paths.RUNS / run_id / "skipped.json"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"reason": "too_large", "hospitals": skipped}, indent=2), encoding="utf-8")
+        write_json(paths.RUNS / run_id / "skipped.json", {"reason": "too_large", "hospitals": skipped})
 
 
 def write_failed(run_id: str, failed: list[dict]) -> None:
@@ -753,20 +393,9 @@ def write_failed(run_id: str, failed: list[dict]) -> None:
     --run-id. Removed when an `ask` on this run ends with no failure."""
     out = paths.RUNS / run_id / "failed.json"
     if failed:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"reason": "model_failed", "hospitals": failed}, indent=2), encoding="utf-8")
+        write_json(out, {"reason": "model_failed", "hospitals": failed})
     elif out.exists():
         out.unlink()
-
-
-def reported_by_document(result: dict, key: str, field: str) -> dict[str, list[str]]:
-    """{document url: sorted verified values} for a reported list, e.g. languages per document."""
-    urls = {d["sha8"]: d["url"] for d in result.get("documents", [])}
-    out: dict[str, set] = {}
-    for x in result.get("reported", {}).get(key, []):
-        if x.get("quote_verified"):
-            out.setdefault(urls.get(x["source_doc"], x["source_doc"]), set()).add(x[field].strip().title())
-    return {u: sorted(v) for u, v in sorted(out.items())}
 
 
 def new_run_id() -> str:

@@ -1,11 +1,16 @@
-"""Score a run against the golden set and produce a disagreement list."""
+"""Score a run against the golden set: per-criterion metrics, a disagreement list, pooled totals and letter agreement.
 
-import csv
-import json
+Everything here reports counts and rates. The one output that puts a golden label next to a hospital id is the
+disagreement list (diff.csv), which is git-ignored and whose eval rows must never be read (CLAUDE.md).
+"""
+
 from pathlib import Path
 
 from . import paths
+from . import hospitals as hospital_table
+from .files import read_csv, write_csv as _write_csv
 from .grade import grade_hospital
+from .runfiles import answers_by_criterion, hospital_records
 from .schema import NO, YES, effective_answer
 from .stats import cluster_ci
 
@@ -14,19 +19,38 @@ def _div(a: int, b: int):
     return round(a / b, 3) if b else None
 
 
+def pct(x) -> str:
+    return "-" if x is None else f"{x:.1%}"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Loading
+
 def load_golden(path: Path) -> dict[tuple[str, str], str]:
-    with open(path, newline="", encoding="utf-8") as f:
-        return {(r["hospital_id"], r["criterion_id"]): r["label"].strip().upper() for r in csv.DictReader(f)}
+    """(hospital_id, criterion_id) -> label, from golden/golden.csv."""
+    return {(r["hospital_id"], r["criterion_id"]): r["label"].strip().upper() for r in read_csv(path)}
+
+
+def load_golden_grades(path: Path) -> dict[str, dict]:
+    """CSSNY's grades: hospital_id -> {letter, auto_fail ("TRUE"/"FALSE"), noncompliant_count}."""
+    return {r["hospital_id"]: r for r in read_csv(path)}
 
 
 def load_run(run_dir: Path) -> dict[str, dict[str, dict]]:
-    out = {}
-    for p in sorted(run_dir.glob("*.json")):
-        data = json.loads(p.read_text(encoding="utf-8"))
-        if "answers" in data and "hospital_id" in data:
-            out[data["hospital_id"]] = {a["criterion_id"]: a for a in data["answers"]}
-    return out
+    """hospital_id -> {criterion_id -> answer record} for every hospital answer file in the run folder."""
+    return {hid: answers_by_criterion(data) for hid, data in hospital_records(run_dir)}
 
+
+def write_csv(path: Path, rows: list[dict]) -> None:
+    """A CSV whose columns are the first row's keys; an empty file when there are no rows."""
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    _write_csv(path, rows, list(rows[0].keys()))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Per criterion
 
 def classify(gold: str, pred: str) -> str:
     """The one rule for a judgment against a YES/NO golden label (used by every number in this file and by sizecheck):
@@ -42,72 +66,63 @@ def classify(gold: str, pred: str) -> str:
     return "flagged"
 
 
+def _scored(golden: dict, run: dict, hospitals: set[str] | None = None, exclude: set[str] | None = None):
+    """(hospital_id, criterion_id, gold) for every judgment that can be scored: the hospital is in the run and the
+    golden label is YES or NO; optionally limited to some hospitals and without some criteria."""
+    for (hid, cid), gold in golden.items():
+        if hid not in run or gold not in (YES, NO):
+            continue
+        if (hospitals is not None and hid not in hospitals) or (exclude and cid in exclude):
+            continue
+        yield hid, cid, gold
+
+
+def _diff_row(hid: str, cid: str, gold: str, rec: dict, pred: str) -> dict:
+    return dict(
+        hospital_id=hid, criterion_id=cid, golden=gold,
+        model_answer=rec.get("answer", "MISSING"), effective=pred,
+        quote_verified=rec.get("quote_verified"), quote=rec.get("quote", ""),
+        source_doc=rec.get("source_doc", ""), page=rec.get("page", ""),
+        reason=rec.get("reason", ""),
+        # fill in by hand (codes in PLAN.md, Day 2 bucketing): model_missed | model_misjudged |
+        # rubric_differs | golden_error | site_changed | golden_or_site | doc_not_found | not_posted |
+        # ambiguous
+        bucket="",
+    )
+
+
 def score_run(golden: dict, run: dict) -> tuple[list[dict], list[dict]]:
     """Returns (metrics_rows, diff_rows). Only hospitals present in the run are scored."""
     per: dict[str, dict] = {}
     diffs = []
-
-    for (hid, cid), gold in golden.items():
-        if hid not in run or gold not in (YES, NO):
-            continue
+    for hid, cid, gold in _scored(golden, run):
         rec = run[hid].get(cid, {})
         pred = effective_answer(rec)
-        m = per.setdefault(
-            cid,
-            dict(n=0, tp_yes=0, tp_no=0, false_yes=0, false_no=0, flagged=0,
-                 gold_yes=0, gold_no=0, answered=0, verified=0),
-        )
+        m = per.setdefault(cid, dict(n=0, tp_yes=0, tp_no=0, false_yes=0, false_no=0, flagged=0,
+                                     gold_yes=0, gold_no=0, answered=0, verified=0))
         m["n"] += 1
         m["gold_yes"] += gold == YES
         m["gold_no"] += gold == NO
         if rec.get("answer") in (YES, NO):
             m["answered"] += 1
             m["verified"] += rec.get("quote_verified") is True
-        outcome = classify(gold, pred)
-        if outcome == "flagged":
-            m["flagged"] += 1
-        else:
-            m[outcome] += 1
+        m[classify(gold, pred)] += 1
         if pred != gold:
-            diffs.append(
-                dict(
-                    hospital_id=hid, criterion_id=cid, golden=gold,
-                    model_answer=rec.get("answer", "MISSING"), effective=pred,
-                    quote_verified=rec.get("quote_verified"), quote=rec.get("quote", ""),
-                    source_doc=rec.get("source_doc", ""), page=rec.get("page", ""),
-                    reason=rec.get("reason", ""),
-                    # fill in by hand (codes in PLAN.md, Day 2 bucketing): model_missed | model_misjudged |
-                    # rubric_differs | golden_error | site_changed | golden_or_site | doc_not_found | not_posted |
-                    # ambiguous
-                    bucket="",
-                )
-            )
+            diffs.append(_diff_row(hid, cid, gold, rec, pred))
 
     rows = []
     for cid, m in sorted(per.items()):
         pred_yes = m["tp_yes"] + m["false_yes"]
         pred_no = m["tp_no"] + m["false_no"]
-        rows.append(
-            dict(
-                criterion_id=cid, n=m["n"],
-                false_yes=m["false_yes"], false_no=m["false_no"],
-                flag_rate=_div(m["flagged"], m["n"]),
-                precision_yes=_div(m["tp_yes"], pred_yes), recall_yes=_div(m["tp_yes"], m["gold_yes"]),
-                precision_no=_div(m["tp_no"], pred_no), recall_no=_div(m["tp_no"], m["gold_no"]),
-                quote_verification_rate=_div(m["verified"], m["answered"]),
-            )
-        )
+        rows.append(dict(
+            criterion_id=cid, n=m["n"],
+            false_yes=m["false_yes"], false_no=m["false_no"],
+            flag_rate=_div(m["flagged"], m["n"]),
+            precision_yes=_div(m["tp_yes"], pred_yes), recall_yes=_div(m["tp_yes"], m["gold_yes"]),
+            precision_no=_div(m["tp_no"], pred_no), recall_no=_div(m["tp_no"], m["gold_no"]),
+            quote_verification_rate=_div(m["verified"], m["answered"]),
+        ))
     return rows, diffs
-
-
-def write_csv(path: Path, rows: list[dict]) -> None:
-    if not rows:
-        path.write_text("", encoding="utf-8")
-        return
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -121,10 +136,7 @@ def pooled(golden: dict, run: dict, hospitals: set[str] | None = None, exclude: 
     accuracy among the answered ones only. The interval on accuracy resamples whole hospitals."""
     tot = {"tp_yes": 0, "tp_no": 0, "false_yes": 0, "false_no": 0, "flagged": 0}
     per_hospital: dict[str, list[int]] = {}
-    for (hid, cid), gold in golden.items():
-        if hid not in run or gold not in (YES, NO) or (hospitals is not None and hid not in hospitals) or \
-                (exclude and cid in exclude):
-            continue
+    for hid, cid, gold in _scored(golden, run, hospitals, exclude):
         outcome = classify(gold, effective_answer(run[hid].get(cid, {})))
         tot[outcome] += 1
         c = per_hospital.setdefault(hid, [0, 0])           # [correct, judgments]
@@ -144,12 +156,6 @@ def pooled(golden: dict, run: dict, hospitals: set[str] | None = None, exclude: 
         "precision_yes": _div(tot["tp_yes"], pred_yes), "recall_yes": _div(tot["tp_yes"], gold_yes),
         "precision_no": _div(tot["tp_no"], pred_no), "recall_no": _div(tot["tp_no"], gold_no),
     }
-
-
-def load_golden_grades(path: Path) -> dict[str, dict]:
-    """CSSNY's grades: hospital_id -> {letter, auto_fail ("TRUE"/"FALSE"), noncompliant_count}."""
-    with open(path, newline="", encoding="utf-8") as f:
-        return {r["hospital_id"]: r for r in csv.DictReader(f)}
 
 
 def letter_agreement(golden_grades: dict, run: dict, criteria_ids: list[str], rubric: dict,
@@ -193,23 +199,18 @@ def letter_agreement(golden_grades: dict, run: dict, criteria_ids: list[str], ru
     return out
 
 
-def pct(x) -> str:
-    return "-" if x is None else f"{x:.1%}"
-
-
 def pooled_lines(label: str, p: dict) -> list[str]:
     if not p["judgments"]:
         return [f"{label}: no scored judgments"]
     ci = p["accuracy_ci"]
-    out = [f"{label}: {p['hospitals']} hospitals, {p['judgments']} judgments against YES/NO labels",
-           f"  accuracy {pct(p['accuracy'])}" + (f" (95% interval {pct(ci[0])}-{pct(ci[1])}, resampling hospitals)" if ci else "")
-           + f"   [correct answers / all judgments; a flagged answer counts as not correct]",
-           f"  coverage {pct(p['coverage'])} answered YES or NO; accuracy when answered {pct(p['accuracy_answered'])}",
-           f"  false YES {p['false_yes']} ({pct(p['false_yes_rate'])})   false NO {p['false_no']} ({pct(p['false_no_rate'])})"
-           f"   flagged {p['flagged']} ({pct(p['flag_rate'])})",
-           f"  YES: precision {pct(p['precision_yes'])} recall {pct(p['recall_yes'])}   "
-           f"NO: precision {pct(p['precision_no'])} recall {pct(p['recall_no'])}"]
-    return out
+    return [f"{label}: {p['hospitals']} hospitals, {p['judgments']} judgments against YES/NO labels",
+            f"  accuracy {pct(p['accuracy'])}" + (f" (95% interval {pct(ci[0])}-{pct(ci[1])}, resampling hospitals)" if ci else "")
+            + "   [correct answers / all judgments; a flagged answer counts as not correct]",
+            f"  coverage {pct(p['coverage'])} answered YES or NO; accuracy when answered {pct(p['accuracy_answered'])}",
+            f"  false YES {p['false_yes']} ({pct(p['false_yes_rate'])})   false NO {p['false_no']} ({pct(p['false_no_rate'])})"
+            f"   flagged {p['flagged']} ({pct(p['flag_rate'])})",
+            f"  YES: precision {pct(p['precision_yes'])} recall {pct(p['recall_yes'])}   "
+            f"NO: precision {pct(p['precision_no'])} recall {pct(p['recall_no'])}"]
 
 
 def letter_lines(label: str, a: dict, against: str = "CSSNY") -> list[str]:
@@ -233,11 +234,7 @@ def letter_lines(label: str, a: dict, against: str = "CSSNY") -> list[str]:
 
 def hospital_sets() -> dict[str, str]:
     """hospital_id -> 'dev' / 'eval' from data/hospitals.csv; empty when the table is not there."""
-    from .sources import load_table
-    try:
-        return {h["hospital_id"]: h.get("set", "") for h in load_table()}
-    except SystemExit:
-        return {}
+    return hospital_table.sets()
 
 
 def _blocks(golden: dict, grades: dict | None, run: dict, groups: list, rubric: dict, letter_title: str,

@@ -3,15 +3,15 @@
 Run by hand after replacing the Word file:  uv run python scripts/build_reference_form.py
 
 The text is made once, with the same extractor the hospital documents go through, and saved. The model is then
-given this text (never the original file), so the form is read and tokenized as ordinary text and nothing is re-extracted per
-hospital. The output uses the same [[page N]] markers as `ask.render_documents`.
+given this text (never the original file), so the form is read and tokenized as ordinary text and nothing is
+re-extracted per hospital. The output uses the same [[page N]] markers as `ask.render_documents`.
 """
 import hashlib
-from pathlib import Path
 
+from hfal import paths
 from hfal.extract import extract_docx
 
-REF = Path(__file__).resolve().parents[1] / "config" / "reference"
+REF = paths.CONFIG / "reference"
 SRC = REF / "2025_uniform_financial_assistance_application.docx"
 OUT = REF / "uniform_application.txt"
 

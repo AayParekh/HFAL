@@ -1,40 +1,53 @@
+"""The `hfal` command line: one sub-command per pipeline step, each a thin wrapper around a module function.
+
+    uv run hfal <command> [options]        (`uv run hfal --help` lists the commands)
+
+The bodies that several commands share (`run_ask`, `grade_run`) live here so that `hfal monitor` can call them too.
+"""
+
 import argparse
-import csv
 import json
 import random
 import re
-
 from pathlib import Path
 
 from . import consistency, corrected, doccheck, monitor, paths, report, sizecheck, usage
-from .ask import iter_ask, new_run_id, ping, write_failed, write_skipped
+from .ask import iter_ask, new_run_id, verified_values, write_failed, write_skipped
 from .discover import discover_all
 from .extract import extract_all
 from .fetch import fetch_all
+from .files import read_csv, write_json
 from .grade import grade_hospital
 from .judge import judge_run
+from .model import ping
+from .runfiles import answers_by_criterion, hospital_records, run_dir
 from .score import load_golden, load_run, score_run, summarize_run, write_csv
 from .sources import build_sources
 from .tag import tag_all
 
+SETS = ("dev", "eval", "all")
 
-def _only(values):
+
+def _only(values) -> set[str] | None:
+    """--hospital values as a set, or None for "every hospital"."""
     return set(values) if values else None
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# Shared bodies
 
 def working_set(set_name: str = "all") -> list[str]:
     """Hospitals that passed every exclusion check (data/working_set.csv, written by scripts/attrition.py).
 
     Sites blocked by a bot check, broken links, and scans that OCR could not read are left out on purpose
-    (PLAN.md); robots.txt excludes a site only while fetch.respect_robots is true (false since Nov 12). Without that file, falls back to every hospital that has extracted text.
+    (PLAN.md); robots.txt excludes a site only while fetch.respect_robots is true (false since Nov 12). Without that
+    file, falls back to every hospital that has extracted text.
     """
     f = paths.DATA / "working_set.csv"
     if not f.exists():
         print("note: data/working_set.csv not found (run scripts/attrition.py); using every hospital with text")
         return sorted(d.name for d in paths.TEXT.iterdir() if d.is_dir())
-    with open(f, newline="", encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    ids = [r["hospital_id"] for r in rows if set_name == "all" or r["set"] == set_name]
+    ids = [r["hospital_id"] for r in read_csv(f) if set_name == "all" or r["set"] == set_name]
     print(f"working set ({set_name}): {len(ids)} hospitals")
     return ids
 
@@ -102,16 +115,13 @@ def run_ask(ids: list[str], run_id: str, dry_run: bool = False) -> tuple[list[di
 
 def grade_run(run_id: str) -> None:
     """runs/RUN_ID/grades.csv (the body of `hfal grade`, also used by `hfal monitor`)."""
-    run_dir = paths.RUNS / run_id
+    out_dir = run_dir(run_id)
     rubric = paths.rubric()
     ids = [c["id"] for c in paths.criteria()]
     rows = []
-    for hid, recs in load_run(run_dir).items():
-        g = grade_hospital(recs, ids, rubric)
-        full = json.loads((run_dir / f"{hid}.json").read_text(encoding="utf-8"))
-        rep = full.get("reported", {})
-        verified = lambda key, field: "; ".join(sorted({x[field].strip().title() for x in rep.get(key, [])  # noqa: E731
-                                                         if x.get("quote_verified")}))
+    for hid, data in hospital_records(out_dir):
+        g = grade_hospital(answers_by_criterion(data), ids, rubric)
+        rep = data.get("reported", {})
         rows.append(dict(
             hospital_id=hid, status=g["status"], letter=g["letter"] or "",
             errors=g["errors"], confirmed_errors=g["confirmed_errors"], auto_fail=";".join(g["auto_fail"]),
@@ -119,12 +129,12 @@ def grade_run(run_id: str) -> None:
             needs_review=g["counts"]["needs_review"],
             failing=";".join(g["failing"]), review_ids=";".join(g["needs_review"]),
             **{f"reported_{k}": v for k, v in g["reported"].items()},
-            languages=verified("languages", "language"),
+            languages="; ".join(verified_values(rep.get("languages", []), "language")),
             languages_from_links="; ".join(rep.get("languages_from_links", [])),
-            psa_counties=verified("psa_counties", "county"),
+            psa_counties="; ".join(verified_values(rep.get("psa_counties", []), "county")),
         ))
-    write_csv(run_dir / "grades.csv", rows)
-    print(f"wrote {run_dir / 'grades.csv'}")
+    write_csv(out_dir / "grades.csv", rows)
+    print(f"wrote {out_dir / 'grades.csv'}")
 
 
 def run_monitor(requested: list[str] | None, ask: bool) -> None:
@@ -152,36 +162,153 @@ def run_monitor(requested: list[str] | None, ask: bool) -> None:
         finally:                               # a failed ask still leaves a report of what was asked
             monitor.add_results(results, run_id, cfg["prompt_version"])
             monitor.write_report(results, meta)
-            (paths.RUNS / run_id).mkdir(parents=True, exist_ok=True)
-            (paths.RUNS / run_id / "monitor.json").write_text(json.dumps(
-                {"checked_on": meta["checked_on"], "set": meta["set"], "asked": changed}), encoding="utf-8")
+            write_json(run_dir(run_id) / "monitor.json",
+                       {"checked_on": meta["checked_on"], "set": meta["set"], "asked": changed}, indent=None)
     print("\n".join(monitor.lines(results, meta)))
 
 
-def main() -> None:
+def run_score(run_id: str, corrected_file: str | None) -> None:
+    """`hfal score`: per-criterion metrics against CSSNY's sheet as it is (the headline) and, when a corrected-labels
+    file touches this run, against the corrected labels; then the pooled totals and letter agreement."""
+    out_dir = run_dir(run_id)
+    golden = load_golden(paths.GOLDEN / "golden.csv")
+    run = load_run(out_dir)
+    metrics, diffs = score_run(golden, run)
+    write_csv(out_dir / "metrics.csv", metrics)
+    write_csv(out_dir / "diff.csv", diffs)
+
+    def pc(x) -> str:
+        return "-" if x is None else f"{x:.2f}"
+
+    def table(title, rows):
+        print(title)
+        print(f"{'criterion':<62} {'n':>4} {'falseYES':>8} {'falseNO':>7} {'flag':>5} {'precYES':>7} {'recYES':>6} {'precNO':>6} {'recNO':>5}")
+        for m in rows:
+            print(f"{m['criterion_id'][:62]:<62} {m['n']:>4} {m['false_yes']:>8} {m['false_no']:>7} {pc(m['flag_rate']):>5} "
+                  f"{pc(m['precision_yes']):>7} {pc(m['recall_yes']):>6} {pc(m['precision_no']):>6} {pc(m['recall_no']):>5}")
+        print()
+
+    table("PER CRITERION, AGAINST CSSNY'S SHEET AS IT IS", metrics)
+    cfile = Path(corrected_file) if corrected_file else corrected.FILE
+    fixes = corrected.load(cfile)
+    if fixes and corrected.counts(fixes, set(run))["rows"]:
+        cmetrics, _ = score_run(corrected.apply(golden, fixes), run)
+        write_csv(out_dir / "metrics_corrected.csv", cmetrics)
+        table("PER CRITERION, AGAINST CORRECTED LABELS (reviewed disagreements only; see below)", cmetrics)
+    lines, summary = summarize_run(run_id, cfile)
+    print("\n".join(lines))
+    write_json(out_dir / "summary.json", summary)
+    print(f"\n{len(diffs)} disagreements -> {out_dir / 'diff.csv'} (dev rows only may be read; never eval rows)")
+    print(f"per-criterion metrics -> {out_dir / 'metrics.csv'}"
+          + (f" and {out_dir / 'metrics_corrected.csv'}" if "corrected" in summary else "")
+          + f"; pooled and letter summary -> {out_dir / 'summary.json'}")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The commands
+
+def _cmd_ping(args) -> None:
+    r = ping(paths.settings()["model"])
+    print(f"ok: {r['provider']}  model={r['model_id']}  region={r['region'] or '-'}  "
+          f"reply={r['reply']!r}  tokens={r['input_tokens']}/{r['output_tokens']}")
+
+
+def _cmd_ask(args) -> None:
+    check_versions()
+    run_id = args.run_id or new_run_id()
+    ids = args.hospital or working_set(args.set)
+    if args.sample:
+        if args.seed is None:
+            raise SystemExit("--sample needs --seed, so the same hospitals can be chosen again")
+        if args.set == "eval":
+            raise SystemExit("sampling is for dev; the eval set is asked whole, at a checkpoint (PLAN.md)")
+        ids = pick_sample(ids, args.sample, args.seed)
+    skipped, failed = run_ask(ids, run_id, dry_run=args.dry_run)
+    if not args.dry_run:
+        if args.sample:
+            write_json(run_dir(run_id) / "sample.json", {"set": args.set, "n": args.sample, "seed": args.seed},
+                       indent=None)
+        print(f"run_id: {run_id}")
+    print(f"asked {len(ids) - len(skipped) - len(failed)} of {len(ids)} hospitals; skipped as too large: "
+          f"{len(skipped)}; failed: {len(failed)}")
+
+
+def _cmd_judge(args) -> None:
+    check_versions(args.run)
+    print(json.dumps(judge_run(args.run, only=_only(args.hospital), dry_run=args.dry_run), indent=2))
+
+
+def _cmd_doc_check(args) -> None:
+    if args.run:
+        run_dir(args.run, must_exist=True)
+    result = doccheck.build(working_set("dev"), working_set("eval"), args.run, min_rows=args.min_rows)
+    print("\n".join(doccheck.lines(result)))
+    if args.run:
+        where = doccheck.write_csv(args.run, result["dev_rows"])
+    else:
+        where = doccheck.write_csv_to(paths.DATA / "review" / "doc_check.csv", result["dev_rows"])
+    print(f"dev rows (hospital ids, no labels) -> {where}")
+
+
+def _cmd_size_check(args) -> None:
+    result = sizecheck.build(args.run if len(args.run) > 1 else args.run[0], args.big_tokens)
+    print("\n".join(sizecheck.lines(result)))
+    print(f"aggregates -> {sizecheck.write_csv(result)}")
+
+
+def _cmd_consistency_check(args) -> None:
+    run_dir(args.run, must_exist=True)
+    result = consistency.build(args.run)
+    print("\n".join(consistency.lines(result)))
+    print(f"aggregates -> {consistency.write_csv(result)}")
+
+
+COMMANDS = {
+    "ping": _cmd_ping,
+    "sources": lambda a: build_sources(a.set, only=_only(a.hospital)),
+    "discover": lambda a: discover_all(only=_only(a.hospital)),
+    "fetch": lambda a: fetch_all(only=_only(a.hospital)),
+    "extract": lambda a: extract_all(only=_only(a.hospital)),
+    "tag": lambda a: tag_all(only=_only(a.hospital)),
+    "ask": _cmd_ask,
+    "judge": _cmd_judge,
+    "doc-check": _cmd_doc_check,
+    "size-check": _cmd_size_check,
+    "consistency-check": _cmd_consistency_check,
+    "usage": lambda a: print("\n".join(usage.report(since=a.since, run=a.run, by=a.by))),
+    "monitor": lambda a: run_monitor(a.hospital, ask=not a.no_ask),
+    "grade": lambda a: grade_run(a.run),
+    "score": lambda a: run_score(a.run, a.corrected),
+    "report": lambda a: report.write(a.run, Path(a.out) if a.out else None),
+}
+
+
+def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="hfal")
     sub = p.add_subparsers(dest="cmd", required=True)
     preset_help = "use this preset from settings.yaml `models:` instead of the `{}:` section (for comparing models)"
+    hospital_help = "limit to these hospital_ids"
+
     s = sub.add_parser("ping", help="tiny request to check the model provider's credentials and model access")
     s.add_argument("--model", help=preset_help.format("model"))
     s = sub.add_parser("sources", help="write landing-page rows of data/sources.csv from data/hospitals.csv")
-    s.add_argument("--set", choices=["dev", "eval", "all"], default="dev")
-    s.add_argument("--hospital", nargs="*", help="limit to these hospital_ids")
+    s.add_argument("--set", choices=SETS, default="dev")
+    s.add_argument("--hospital", nargs="*", help=hospital_help)
     for name in ("discover", "fetch", "extract", "tag"):
         s = sub.add_parser(name)
-        s.add_argument("--hospital", nargs="*", help="limit to these hospital_ids")
+        s.add_argument("--hospital", nargs="*", help=hospital_help)
     s = sub.add_parser("ask")
     s.add_argument("--hospital", nargs="*")
     s.add_argument("--run-id")
     s.add_argument("--dry-run", action="store_true", help="report prompt size per hospital; no model call")
-    s.add_argument("--set", choices=["dev", "eval", "all"], default="all",
+    s.add_argument("--set", choices=SETS, default="all",
                    help="which part of the working set to ask when --hospital is not given (default: all)")
     s.add_argument("--sample", type=int, help="ask only N hospitals chosen at random from the set (needs --seed)")
     s.add_argument("--seed", type=int, help="seed for --sample, so the same hospitals can be asked again")
     s.add_argument("--model", help=preset_help.format("model"))
     s = sub.add_parser("judge", help="explain the disagreements with the golden labels (dev hospitals only)")
     s.add_argument("--run", required=True, help="run_id folder under runs/")
-    s.add_argument("--hospital", nargs="*", help="limit to these hospital_ids")
+    s.add_argument("--hospital", nargs="*", help=hospital_help)
     s.add_argument("--dry-run", action="store_true", help="count disagreements and prompt size; no model call")
     s.add_argument("--model", help=preset_help.format("judge"))
     s = sub.add_parser("doc-check", help="count doc_not_found rows and missing document types (discovery check)")
@@ -214,105 +341,15 @@ def main() -> None:
                                       "more runs; no model call, no golden labels")
     s.add_argument("--run", action="append", required=True, help="run_id folder under runs/; repeat for several runs")
     s.add_argument("--out", help="output folder (default results/TODAY/, also copied to results/latest/)")
-    args = p.parse_args()
+    return p
+
+
+def main() -> None:
+    args = build_parser().parse_args()
     if getattr(args, "model", None):
         paths.use_model("judge" if args.cmd == "judge" else "model", args.model)
+    COMMANDS[args.cmd](args)
 
-    if args.cmd == "ping":
-        r = ping(paths.settings()["model"])
-        print(f"ok: {r['provider']}  model={r['model_id']}  region={r['region'] or '-'}  "
-              f"reply={r['reply']!r}  tokens={r['input_tokens']}/{r['output_tokens']}")
-    elif args.cmd == "sources":
-        build_sources(args.set, only=_only(args.hospital))
-    elif args.cmd == "discover":
-        discover_all(only=_only(args.hospital))
-    elif args.cmd == "fetch":
-        fetch_all(only=_only(args.hospital))
-    elif args.cmd == "extract":
-        extract_all(only=_only(args.hospital))
-    elif args.cmd == "tag":
-        tag_all(only=_only(args.hospital))
-    elif args.cmd == "ask":
-        check_versions()
-        run_id = args.run_id or new_run_id()
-        ids = args.hospital or working_set(args.set)
-        if args.sample:
-            if args.seed is None:
-                raise SystemExit("--sample needs --seed, so the same hospitals can be chosen again")
-            if args.set == "eval":
-                raise SystemExit("sampling is for dev; the eval set is asked whole, at a checkpoint (PLAN.md)")
-            ids = pick_sample(ids, args.sample, args.seed)
-        skipped, failed = run_ask(ids, run_id, dry_run=args.dry_run)
-        if not args.dry_run:
-            if args.sample:
-                (paths.RUNS / run_id).mkdir(parents=True, exist_ok=True)
-                (paths.RUNS / run_id / "sample.json").write_text(
-                    json.dumps({"set": args.set, "n": args.sample, "seed": args.seed}), encoding="utf-8")
-            print(f"run_id: {run_id}")
-        print(f"asked {len(ids) - len(skipped) - len(failed)} of {len(ids)} hospitals; skipped as too large: "
-              f"{len(skipped)}; failed: {len(failed)}")
-    elif args.cmd == "judge":
-        check_versions(args.run)
-        print(json.dumps(judge_run(args.run, only=_only(args.hospital), dry_run=args.dry_run), indent=2))
-    elif args.cmd == "doc-check":
-        if args.run and not (paths.RUNS / args.run).is_dir():
-            raise SystemExit(f"{paths.RUNS / args.run} not found")
-        result = doccheck.build(working_set("dev"), working_set("eval"), args.run, min_rows=args.min_rows)
-        print("\n".join(doccheck.lines(result)))
-        if args.run:
-            where = doccheck.write_csv(args.run, result["dev_rows"])
-        else:
-            where = doccheck.write_csv_to(paths.DATA / "review" / "doc_check.csv", result["dev_rows"])
-        print(f"dev rows (hospital ids, no labels) -> {where}")
-    elif args.cmd == "size-check":
-        result = sizecheck.build(args.run if len(args.run) > 1 else args.run[0], args.big_tokens)
-        print("\n".join(sizecheck.lines(result)))
-        print(f"aggregates -> {sizecheck.write_csv(result)}")
-    elif args.cmd == "consistency-check":
-        if not (paths.RUNS / args.run).is_dir():
-            raise SystemExit(f"{paths.RUNS / args.run} not found")
-        result = consistency.build(args.run)
-        print("\n".join(consistency.lines(result)))
-        print(f"aggregates -> {consistency.write_csv(result)}")
-    elif args.cmd == "usage":
-        print("\n".join(usage.report(since=args.since, run=args.run, by=args.by)))
-    elif args.cmd == "monitor":
-        run_monitor(args.hospital, ask=not args.no_ask)
-    elif args.cmd == "grade":
-        grade_run(args.run)
-    elif args.cmd == "report":
-        report.write(args.run, Path(args.out) if args.out else None)
-    elif args.cmd == "score":
-        run_dir = paths.RUNS / args.run
-        golden = load_golden(paths.GOLDEN / "golden.csv")
-        run = load_run(run_dir)
-        metrics, diffs = score_run(golden, run)
-        write_csv(run_dir / "metrics.csv", metrics)
-        write_csv(run_dir / "diff.csv", diffs)
-        pc = lambda x: "-" if x is None else f"{x:.2f}"  # noqa: E731
-
-        def table(title, rows):
-            print(title)
-            print(f"{'criterion':<62} {'n':>4} {'falseYES':>8} {'falseNO':>7} {'flag':>5} {'precYES':>7} {'recYES':>6} {'precNO':>6} {'recNO':>5}")
-            for m in rows:
-                print(f"{m['criterion_id'][:62]:<62} {m['n']:>4} {m['false_yes']:>8} {m['false_no']:>7} {pc(m['flag_rate']):>5} "
-                      f"{pc(m['precision_yes']):>7} {pc(m['recall_yes']):>6} {pc(m['precision_no']):>6} {pc(m['recall_no']):>5}")
-            print()
-
-        table("PER CRITERION, AGAINST CSSNY'S SHEET AS IT IS", metrics)
-        cfile = Path(args.corrected) if args.corrected else corrected.FILE
-        fixes = corrected.load(cfile)
-        if fixes and corrected.counts(fixes, set(run))["rows"]:
-            cmetrics, _ = score_run(corrected.apply(golden, fixes), run)
-            write_csv(run_dir / "metrics_corrected.csv", cmetrics)
-            table("PER CRITERION, AGAINST CORRECTED LABELS (reviewed disagreements only; see below)", cmetrics)
-        lines, summary = summarize_run(args.run, cfile)
-        print("\n".join(lines))
-        (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        print(f"\n{len(diffs)} disagreements -> {run_dir / 'diff.csv'} (dev rows only may be read; never eval rows)")
-        print(f"per-criterion metrics -> {run_dir / 'metrics.csv'}"
-              + (f" and {run_dir / 'metrics_corrected.csv'}" if "corrected" in summary else "")
-              + f"; pooled and letter summary -> {run_dir / 'summary.json'}")
 
 if __name__ == "__main__":
     main()

@@ -14,17 +14,15 @@ Only the statute text and its dates are saved (no HTML from the site). The offic
 Senate's copy, linked from the page and recorded in the header of the output.
 """
 import re
-import sys
 from datetime import date, datetime
-from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+from hfal import paths
+from hfal.fetch import Robots, make_client
 
 URL = "https://newyork.public.law/laws/n.y._public_health_law_section_2807-k"
-OUT = ROOT / "config" / "reference" / "phl_2807k_9a.txt"
+OUT = paths.CONFIG / "reference" / "phl_2807k_9a.txt"
 FIRST, STOP = "9.", "10."          # keep subdivision 9 (uniform form) and 9-a (financial assistance); stop at 10
 
 
@@ -124,8 +122,6 @@ def build(html: str, retrieved: date) -> str:
 
 
 def main() -> None:
-    from hfal.fetch import Robots, make_client
-
     with make_client(timeout=30) as client:
         if not Robots(client).allowed(URL):
             raise SystemExit(f"robots.txt disallows {URL}")

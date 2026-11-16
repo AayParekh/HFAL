@@ -1,4 +1,3 @@
-import json
 
 from hfal import fetch, paths
 

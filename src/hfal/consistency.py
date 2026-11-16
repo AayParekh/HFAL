@@ -24,15 +24,16 @@ three points the v5 rubric already compared (time to apply, how to apply, servic
 """
 
 import csv
-import json
 from collections import Counter
 
-from . import paths
-from .schema import NO, UNCLEAR, YES
+from . import hospitals, paths
+from .runfiles import hospital_records
+from .schema import NO, UNCLEAR, YES, effective_answer
 from .verify import find_quote, normalize
 
 CRITERION = "consistent_across_posted_documents"
 STATUSES = ["agree", "conflict", "not_compared"]
+MODEL = "MODEL"     # decide()'s verdict when the model's own answer stands
 
 
 def prompt_block(points: list[dict]) -> str:
@@ -60,6 +61,14 @@ def prompt_block(points: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _verify_side(row: dict, item: dict, side: str, docs: list[dict]) -> None:
+    """Check one side's quote (quote_a / quote_b) verbatim and record where it was found."""
+    q = item.get(f"quote_{side}", "") or ""
+    sha8, pg = find_quote(q, item.get(f"doc_{side}"), docs) if q.strip() else (None, None)
+    row.update({f"quote_{side}": q, f"doc_{side}": sha8 or item.get(f"doc_{side}", ""),
+                f"page_{side}": pg if sha8 else item.get(f"page_{side}"), f"{side}_verified": bool(sha8)})
+
+
 def check(raw: list[dict] | None, points: list[dict], docs: list[dict]) -> dict:
     """Verify every point the model reported. Returns the record saved as `consistency_check` in the run file."""
     ids = [p["id"] for p in points]
@@ -70,16 +79,14 @@ def check(raw: list[dict] | None, points: list[dict], docs: list[dict]) -> dict:
     rows = []
     for p in points:
         item = first.get(p["id"])
+        counts = bool(p.get("counts", True))
         if item is None:
-            rows.append({"point": p["id"], "counts": bool(p.get("counts", True)), "status": "missing", "verified": None})
+            rows.append({"point": p["id"], "counts": counts, "status": "missing", "verified": None})
             continue
         status = item.get("status") if item.get("status") in STATUSES else "not_compared"
-        row = {"point": p["id"], "counts": bool(p.get("counts", True)), "status": status, "reason": item.get("reason", "")}
+        row = {"point": p["id"], "counts": counts, "status": status, "reason": item.get("reason", "")}
         for side in ("a", "b"):
-            q = item.get(f"quote_{side}", "") or ""
-            sha8, pg = find_quote(q, item.get(f"doc_{side}"), docs) if q.strip() else (None, None)
-            row.update({f"quote_{side}": q, f"doc_{side}": sha8 or item.get(f"doc_{side}", ""),
-                        f"page_{side}": pg if sha8 else item.get(f"page_{side}"), f"{side}_verified": bool(sha8)})
+            _verify_side(row, item, side, docs)
         both = row["a_verified"] and row["b_verified"]
         if status == "conflict":
             row["verified"] = bool(both and normalize(row["quote_a"]) != normalize(row["quote_b"]))
@@ -96,17 +103,17 @@ def _where(r: dict) -> str:
 
 
 def decide(rows: list[dict], counted: set[str] | None = None) -> tuple[str, dict | None]:
-    """The combination rule (see the module docstring). Returns (answer or "MODEL", the row to quote or None).
-    "MODEL" means the model's own answer stands. counted: the point ids that count (default: each row's `counts`)."""
+    """The combination rule (see the module docstring). Returns (answer or MODEL, the row to quote or None).
+    MODEL means the model's own answer stands. counted: the point ids that count (default: each row's `counts`)."""
     use = [r for r in rows if (r["point"] in counted if counted is not None else r["counts"])]
     conflicts = [r for r in use if r["status"] == "conflict" and r["verified"]]
     if conflicts:
         return NO, conflicts[0]
-    if any(r["status"] == "conflict" or r["status"] == "missing" for r in use):
+    if any(r["status"] in ("conflict", "missing") for r in use):
         return UNCLEAR, None
     agrees = [r for r in use if r["status"] == "agree"]
     if not agrees:
-        return "MODEL", None
+        return MODEL, None
     quoted = next((r for r in agrees if r["a_verified"]), None)
     return (YES, quoted) if quoted else (UNCLEAR, None)
 
@@ -125,7 +132,7 @@ def apply(answer: dict, record: dict) -> dict:
     summary = f"Consistency check: {'; '.join(parts) or 'no conflict'}; {agree} point(s) agree."
     model = f"Model answered {answer.get('answer')}: {answer.get('reason', '')}".strip()
     base = {**answer, "model_answer": answer.get("answer")}
-    if verdict == "MODEL":
+    if verdict == MODEL:
         return {**base, "reason": f"{summary} No point is stated in two documents, so the model's answer stands. {model}"}
     if row is None:
         return {**base, "answer": verdict, "quote_verified": False, "reason": f"{summary} {model}"}
@@ -135,22 +142,23 @@ def apply(answer: dict, record: dict) -> dict:
 
 # ---- dev summary: `hfal consistency-check --run RUN_ID` ---------------------------------------------------------
 
+def _status_key(r: dict) -> str:
+    """How a point row is counted in the status table: missing, not_compared, or status + verified / unverified."""
+    if r["status"] in ("missing", "not_compared"):
+        return r["status"]
+    return f"{r['status']}_{'verified' if r['verified'] else 'unverified'}"
+
+
 def build(run_id: str) -> dict:
     """Aggregates over the dev hospitals of a run (eval hospitals are skipped and counted). Counts only."""
-    from .judge import dev_hospitals
-    from .schema import effective_answer
     from .score import classify, load_golden
 
     golden = load_golden(paths.GOLDEN / "golden.csv")
-    dev = dev_hospitals()
+    dev = hospitals.dev_ids()
     status: dict[str, Counter] = {}
-    hospitals, skipped_eval, no_check = [], 0, 0
+    labelled, skipped_eval, no_check = [], 0, 0
     final, model = Counter(), Counter()
-    for f in sorted((paths.RUNS / run_id).glob("*.json")):
-        data = json.loads(f.read_text(encoding="utf-8"))
-        if "answers" not in data or "hospital_id" not in data:
-            continue
-        hid = data["hospital_id"]
+    for hid, data in hospital_records(run_id):
         if hid not in dev:
             skipped_eval += 1
             continue
@@ -159,26 +167,24 @@ def build(run_id: str) -> dict:
             no_check += 1
             continue
         for r in rec["points"]:
-            key = r["status"] if r["status"] in ("missing", "not_compared") else \
-                f"{r['status']}_{'verified' if r['verified'] else 'unverified'}"
-            status.setdefault(r["point"], Counter())[key] += 1
+            status.setdefault(r["point"], Counter())[_status_key(r)] += 1
         gold = golden.get((hid, CRITERION))
         ans = next((a for a in data["answers"] if a["criterion_id"] == CRITERION), {})
         if gold in (YES, NO):
-            hospitals.append((gold, rec["points"]))
+            labelled.append((gold, rec["points"]))
             final[classify(gold, effective_answer(ans))] += 1
             model[classify(gold, ans.get("model_answer") or ans.get("answer", UNCLEAR))] += 1
     points = list(status)
-    counted = {r["point"] for _, rows in hospitals[:1] for r in rows if r["counts"]} if hospitals else set()
+    counted = {r["point"] for _, rows in labelled[:1] for r in rows if r["counts"]} if labelled else set()
 
     def simulate(use: set[str]) -> Counter:
         c = Counter()
-        for gold, rows in hospitals:
+        for gold, rows in labelled:
             verdict, _ = decide(rows, use)
-            c[classify(gold, verdict if verdict != "MODEL" else UNCLEAR)] += 1
+            c[classify(gold, verdict if verdict != MODEL else UNCLEAR)] += 1
         return c
 
-    return {"run_id": run_id, "hospitals": len(hospitals), "skipped_eval": skipped_eval, "no_check": no_check,
+    return {"run_id": run_id, "hospitals": len(labelled), "skipped_eval": skipped_eval, "no_check": no_check,
             "status": {p: dict(status[p]) for p in points}, "final": dict(final), "model": dict(model),
             "counted": sorted(counted),
             "alone": {p: dict(simulate({p})) for p in points},

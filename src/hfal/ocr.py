@@ -20,14 +20,13 @@ fail. Both of those fail toward UNCLEAR (a person looks), never toward a code-ma
 which pages were OCR'd and their mean line confidence, and `ask` records which documents were OCR'd.
 """
 
-import json
-
 import boto3
 import pymupdf
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from . import paths, usage
+from .files import read_json, write_json
 
 # Bump this by hand whenever the code below changes what text comes out of a Textract reply. It is part of the
 # extractor stamp of OCR'd text files, so `hfal extract` redoes them (from the cache: no new charge).
@@ -36,11 +35,13 @@ OCR_VERSION = "1"
 MAX_BYTES = 10 * 1024 * 1024   # Textract's size limit for one synchronous document
 MAX_SIDE = 10_000              # Textract's limit on either side of an image, in pixels
 FALLBACK_DPI = (200, 150)      # tried in turn when a page at the set resolution is over MAX_BYTES
+DEFAULT_DPI = 300
 
 # Errors that will happen on every page (no or expired credentials, no permission). After one of them, `extract`
 # stops trying OCR for the rest of the run instead of failing page after page.
 _ACCESS_CODES = {"AccessDeniedException", "UnrecognizedClientException", "ExpiredTokenException",
                  "InvalidSignatureException", "UnauthorizedOperation", "SubscriptionRequiredException"}
+OCR_ERRORS = (BotoCoreError, ClientError, ValueError)
 
 
 def settings() -> dict:
@@ -66,9 +67,6 @@ def is_access_error(e: Exception) -> bool:
         return e.response.get("Error", {}).get("Code") in _ACCESS_CODES
     # NoCredentialsError, expired SSO token, missing profile: all BotoCoreError, none worth retrying page by page.
     return isinstance(e, BotoCoreError)
-
-
-OCR_ERRORS = (BotoCoreError, ClientError, ValueError)
 
 
 def render_png(page: "pymupdf.Page", dpi: int) -> bytes:
@@ -97,19 +95,22 @@ def _cache_file(hid: str, sha8: str, page_no: int, dpi: int):
     return paths.CACHE / "ocr" / hid / f"{sha8}-p{page_no}-{dpi}dpi.json"
 
 
+def _dpi(cfg: dict) -> int:
+    return int(cfg.get("dpi", DEFAULT_DPI))
+
+
 def read_page(client, page: "pymupdf.Page", hid: str, sha8: str, cfg: dict) -> dict:
     """Textract's reply for one page: from the cache, or from Textract (billed, logged in the ledger, cached)."""
-    dpi = int(cfg.get("dpi", 300))
+    dpi = _dpi(cfg)
     cache = _cache_file(hid, sha8, page.number + 1, dpi)
     if cache.exists():
-        return json.loads(cache.read_text(encoding="utf-8"))
+        return read_json(cache)
     reply = client.detect_document_text(Document={"Bytes": render_png(page, dpi)})
     reply.pop("ResponseMetadata", None)
     usage.log_call({"provider": "textract", "model": "DetectDocumentText",
                     "cost_usd": cfg.get("price_per_page")},
                    tag={"purpose": "ocr", "hospital_id": hid})
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps(reply), encoding="utf-8")
+    write_json(cache, reply, indent=None)
     return reply
 
 
@@ -127,4 +128,4 @@ def ocr_pdf(path, pages: list[str], hid: str, sha8: str, client, cfg: dict, min_
             done.append(i + 1)
             confidence.append(conf)
     return pages, {"engine": "aws-textract DetectDocumentText", "version": OCR_VERSION,
-                   "dpi": int(cfg.get("dpi", 300)), "pages": done, "mean_line_confidence": confidence}
+                   "dpi": _dpi(cfg), "pages": done, "mean_line_confidence": confidence}

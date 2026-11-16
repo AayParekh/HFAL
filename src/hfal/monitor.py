@@ -35,20 +35,21 @@ The answers themselves are written by `hfal ask` to runs/{run_id}/ as usual; the
 hospitals that changed, and add_results() records, per hospital, which run holds its current result.
 """
 
-import csv
 import hashlib
-import json
 import re
 from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from . import paths
-from .attrition import CATEGORY_TEXT, WORKING_STAGE, classify, full_manifest, ocr_flags
-from .discover import discover_all, load_hospitals, update_sources
+from . import hospitals, paths
+from .attrition import CATEGORY_TEXT, WORKING_STAGE, classify, ocr_flags
+from .discover import discover_all, update_sources
 from .extract import extract_all
 from .fetch import fetch_all
+from .files import read_csv, read_json, read_json_or_none, write_csv, write_json
 from .grade import grade_hospital
+from .manifest import full_manifest, latest_before, manifest_files
+from .runfiles import answers_by_criterion
 from .schema import effective_answer
 from .tag import tag_all
 
@@ -75,10 +76,7 @@ STATUSES = ["changed", "unchanged", "unreachable", "error"]
 
 def baseline(hid: str, today: str) -> tuple[str | None, list[dict]]:
     """(date, entries) of the hospital's latest manifest dated before today; (None, []) if it has none."""
-    for m in sorted((paths.RAW / hid).glob("*/manifest.json"), reverse=True):
-        if m.parent.name < today:
-            return m.parent.name, json.loads(m.read_text(encoding="utf-8"))
-    return None, []
+    return latest_before(hid, today)
 
 
 # A line on more than this share of a hospital's HTML pages is website furniture (menu, header, footer).
@@ -95,13 +93,18 @@ def norm_lines(text: str) -> list[str]:
 
 
 def _doc(hid: str, entry: dict) -> dict | None:
+    """The extracted text file behind a downloaded manifest entry, or None."""
     if entry.get("status") != "ok" or not entry.get("sha8"):
         return None
-    return _read_json(paths.TEXT / hid / f"{entry['sha8']}.json")
+    return read_json_or_none(paths.TEXT / hid / f"{entry['sha8']}.json")
 
 
 def _is_html(entry: dict) -> bool:
     return entry.get("ext") == "html"
+
+
+def _doc_lines(doc: dict) -> list[str]:
+    return norm_lines("\n".join(doc.get("pages", [])))
 
 
 def boilerplate(hid: str, entries: list[dict]) -> frozenset[str]:
@@ -112,7 +115,7 @@ def boilerplate(hid: str, entries: list[dict]) -> frozenset[str]:
     for e in entries:
         doc = _doc(hid, e) if _is_html(e) else None
         if doc is not None:
-            per_url.setdefault(e["url"], set()).update(norm_lines("\n".join(doc.get("pages", []))))
+            per_url.setdefault(e["url"], set()).update(_doc_lines(doc))
     if len(per_url) < BOILERPLATE_MIN_PAGES:
         return frozenset()
     seen = Counter(ln for lines in per_url.values() for ln in lines)
@@ -126,7 +129,7 @@ def text_key(hid: str, entry: dict, furniture: frozenset[str] = frozenset()) -> 
     doc = _doc(hid, entry)
     if doc is None:
         return None
-    lines = norm_lines("\n".join(doc.get("pages", [])))
+    lines = _doc_lines(doc)
     if _is_html(entry):
         lines = [ln for ln in lines if ln not in furniture]
     text = "\n".join(sorted(lines))
@@ -135,6 +138,29 @@ def text_key(hid: str, entry: dict, furniture: frozenset[str] = frozenset()) -> 
 
 def _ok(e: dict | None) -> bool:
     return e is not None and e.get("status") == "ok"
+
+
+def _sha(e: dict) -> str:
+    """The full hash of a downloaded entry (older manifests have only sha8)."""
+    return e.get("sha256", e.get("sha8"))
+
+
+def _change(eb: dict | None, ea: dict | None, key) -> str:
+    """The change for one URL, from its entry before (eb) and now (ea); either may be missing."""
+    if _ok(eb) and _ok(ea):
+        if _sha(eb) == _sha(ea):
+            return "unchanged"
+        kb = key(eb)
+        return "same_text" if kb is not None and kb == key(ea) else "changed"
+    if _ok(eb):
+        return "removed" if ea is None else "unreachable"
+    if _ok(ea):
+        return "new"
+    if ea is None:
+        return "removed"           # listed before but never downloaded; no longer listed
+    if eb is None:
+        return "new_unreachable"
+    return "still_unreachable"
 
 
 def diff_documents(before: list[dict], after: list[dict], key) -> list[dict]:
@@ -148,29 +174,14 @@ def diff_documents(before: list[dict], after: list[dict], key) -> list[dict]:
     rows = []
     for url in sorted(b.keys() | a.keys()):
         eb, ea = b.get(url), a.get(url)
-        if _ok(eb) and _ok(ea):
-            if eb.get("sha256", eb["sha8"]) == ea.get("sha256", ea["sha8"]):
-                change = "unchanged"
-            else:
-                kb = key(eb)
-                change = "same_text" if kb is not None and kb == key(ea) else "changed"
-        elif _ok(eb):
-            change = "removed" if ea is None else "unreachable"
-        elif _ok(ea):
-            change = "new"
-        elif ea is None:
-            change = "removed"           # listed before but never downloaded; no longer listed
-        elif eb is None:
-            change = "new_unreachable"
-        else:
-            change = "still_unreachable"
         rows.append({
-            "url": url, "label": (ea or eb).get("label", ""), "change": change, "moved_from": "",
+            "url": url, "label": (ea or eb).get("label", ""), "change": _change(eb, ea, key), "moved_from": "",
             "status_before": eb.get("status", "") if eb else "", "status_now": ea.get("status", "") if ea else "",
             "sha8_before": eb.get("sha8", "") if _ok(eb) else "", "sha8_now": ea.get("sha8", "") if _ok(ea) else "",
-            "_sha_before": eb.get("sha256", eb.get("sha8")) if _ok(eb) else None,
-            "_sha_now": ea.get("sha256", ea.get("sha8")) if _ok(ea) else None,
+            "_sha_before": _sha(eb) if _ok(eb) else None,
+            "_sha_now": _sha(ea) if _ok(ea) else None,
         })
+    # A "removed" file whose bytes reappear as a "new" URL is one "moved" row.
     removed = {}
     for r in rows:
         if r["change"] == "removed" and r["_sha_before"]:
@@ -192,8 +203,7 @@ def texts(entries: list[dict], key) -> Counter:
 
 def evaluable(h: dict, entries: list[dict], disc: dict | None) -> tuple[bool, str]:
     """(passes the exclusion rule, category if not), from a manifest and the discovery record behind it."""
-    hid = h["hospital_id"]
-    passed, cat = classify(h, entries, disc, ocr_flags(hid, entries), {}, None)
+    passed, cat = classify(h, entries, disc, ocr_flags(h["hospital_id"], entries), {}, None)
     return passed >= WORKING_STAGE, cat
 
 
@@ -206,22 +216,15 @@ def decide(changed_text: bool, ok_now: bool) -> str:
 # ---------------------------------------------------------------------------------------------------------------
 # One hospital: refresh and compare
 
-def _read_json(p: Path) -> dict | None:
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
 def _snapshot(hid: str, today: str) -> dict[Path, bytes]:
     """Manifests dated today or later, as they are before the refresh (a same-day rerun has one)."""
-    return {m: m.read_bytes() for m in (paths.RAW / hid).glob("*/manifest.json") if m.parent.name >= today}
+    return {m: m.read_bytes() for m in manifest_files(hid) if m.parent.name >= today}
 
 
 def _restore(hid: str, today: str, snap: dict[Path, bytes], disc_file: Path, disc_bytes: bytes | None,
              disc_before: dict | None) -> None:
     """Put the hospital back as it was before the refresh, so `ask` keeps seeing the baseline documents."""
-    for m in (paths.RAW / hid).glob("*/manifest.json"):
+    for m in manifest_files(hid):
         if m.parent.name >= today and m not in snap:
             m.unlink()
     for m, content in snap.items():
@@ -234,7 +237,7 @@ def _restore(hid: str, today: str, snap: dict[Path, bytes], disc_file: Path, dis
 
 
 def refresh(hid: str) -> None:
-    """Steps 2 of the module docstring: the same code as the hfal fetch / discover / extract / tag commands."""
+    """Step 2 of the module docstring: the same code as the hfal fetch / discover / extract / tag commands."""
     fetch_all(only={hid}, landing_only=True)    # discovery starts from the saved landing page: refresh it first
     discover_all(only={hid})
     fetch_all(only={hid})
@@ -247,7 +250,7 @@ def check_hospital(h: dict, today: str) -> dict:
     base_date, before = baseline(hid, today)
     disc_file = paths.DATA / "discovered" / f"{hid}.json"
     disc_bytes = disc_file.read_bytes() if disc_file.exists() else None
-    disc_before = _read_json(disc_file)
+    disc_before = read_json_or_none(disc_file)
     snap = _snapshot(hid, today)
     was_ok = evaluable(h, before, disc_before)[0] if base_date else None
     row = {"hospital_id": hid, "status": "", "cause": "", "newly_unreachable": "",
@@ -261,9 +264,12 @@ def check_hospital(h: dict, today: str) -> dict:
                 **{c: 0 for c in CHANGES}, "documents": []}
     after = full_manifest(hid)
     furniture = boilerplate(hid, before + after)
-    key = lambda e: text_key(hid, e, furniture)     # noqa: E731
+
+    def key(e):
+        return text_key(hid, e, furniture)
+
     docs = diff_documents(before, after, key)
-    ok_now, cat = evaluable(h, after, _read_json(disc_file))
+    ok_now, cat = evaluable(h, after, read_json_or_none(disc_file))
     texts_now = texts(after, key)
     status = decide(texts(before, key) != texts_now, ok_now)
     counts = Counter(d["change"] for d in docs)
@@ -287,7 +293,7 @@ def select_ids(requested: list[str] | None, working: list[str]) -> list[str]:
 
 def check(ids: list[str], today: str | None = None) -> list[dict]:
     today = today or date.today().isoformat()
-    table = load_hospitals()
+    table = hospitals.by_id()
     results = []
     for hid in ids:
         r = check_hospital(table.get(hid, {"hospital_id": hid}), today)
@@ -309,8 +315,7 @@ def previous_run(hid: str, prompt_version: str, exclude: str | None = None) -> s
 
 def _grade(run_id: str, hid: str, ids: list[str], rubric: dict) -> tuple[str, dict[str, str]]:
     """(letter or 'incomplete', criterion -> effective answer) for one hospital in one run."""
-    data = json.loads((paths.RUNS / run_id / f"{hid}.json").read_text(encoding="utf-8"))
-    recs = {a["criterion_id"]: a for a in data["answers"]}
+    recs = answers_by_criterion(read_json(paths.RUNS / run_id / f"{hid}.json"))
     g = grade_hospital(recs, ids, rubric)
     return g["letter"] or "incomplete", {cid: effective_answer(recs.get(cid, {})) for cid in ids}
 
@@ -339,16 +344,8 @@ def not_monitored(set_name: str = MONITORED_SET) -> dict[str, int]:
     f = paths.DATA / "attrition.csv"
     if not f.exists():
         return {}
-    with open(f, newline="", encoding="utf-8") as fh:
-        rows = [r for r in csv.DictReader(fh) if r.get("set") == set_name and int(r["stages_passed"]) < WORKING_STAGE]
+    rows = [r for r in read_csv(f) if r.get("set") == set_name and int(r["stages_passed"]) < WORKING_STAGE]
     return dict(sorted(Counter(r["stopped_because"] or "-" for r in rows).items()))
-
-
-def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore", lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
 
 
 HOSPITAL_FIELDS = ["hospital_id", "status", "cause", "newly_unreachable", "was_evaluable", "baseline_date",
@@ -360,14 +357,27 @@ CHANGE_FIELDS = ["hospital_id", "change", "url", "label", "moved_from", "status_
 
 def write_report(results: list[dict], meta: dict) -> Path:
     out = paths.DATA / "monitor" / meta["checked_on"]
-    out.mkdir(parents=True, exist_ok=True)
-    _write_csv(out / "hospitals.csv", results, HOSPITAL_FIELDS)
+    write_csv(out / "hospitals.csv", results, HOSPITAL_FIELDS, extrasaction="ignore")
     order = {c: i for i, c in enumerate(CHANGES)}
     changes = sorted(({"hospital_id": r["hospital_id"], **d} for r in results for d in r["documents"]
                       if d["change"] != "unchanged"), key=lambda d: (d["hospital_id"], order[d["change"]], d["url"]))
-    _write_csv(out / "changes.csv", changes, CHANGE_FIELDS)
-    (out / "report.json").write_text(json.dumps({"meta": meta, "hospitals": results}, indent=2), encoding="utf-8")
+    write_csv(out / "changes.csv", changes, CHANGE_FIELDS, extrasaction="ignore")
+    write_json(out / "report.json", {"meta": meta, "hospitals": results})
     return out
+
+
+def _detail(r: dict) -> str:
+    """The one-line detail for a hospital that is not unchanged."""
+    if r["status"] == "error":
+        return r["cause"]
+    if r["status"] == "unreachable":
+        return r["cause"] + (" (newly)" if r["newly_unreachable"] == "yes" else "")
+    detail = ", ".join(f"{c.replace('_', ' ')} {r[c]}" for c in CHANGES[:5] if r[c])
+    if r.get("asked_run"):
+        detail += f"; letter {r['letter_before'] or '-'} -> {r['letter_after']}"
+        if r["answers_changed"] != "":
+            detail += f", {r['answers_changed']} answers changed"
+    return detail
 
 
 def lines(results: list[dict], meta: dict) -> list[str]:
@@ -394,18 +404,7 @@ def lines(results: list[dict], meta: dict) -> list[str]:
         out.append(f"  not asked ({meta.get('ask_note') or 'no model call'}): the results of the "
                    f"{st['changed']} changed hospitals are out of date")
     for r in results:
-        if r["status"] == "unchanged":
-            continue
-        if r["status"] == "error":
-            detail = r["cause"]
-        elif r["status"] == "unreachable":
-            detail = r["cause"] + (" (newly)" if r["newly_unreachable"] == "yes" else "")
-        else:
-            detail = ", ".join(f"{c.replace('_', ' ')} {r[c]}" for c in CHANGES[:5] if r[c])
-            if r.get("asked_run"):
-                detail += f"; letter {r['letter_before'] or '-'} -> {r['letter_after']}"
-                if r["answers_changed"] != "":
-                    detail += f", {r['answers_changed']} answers changed"
-        out.append(f"  {r['status']:<11} {r['hospital_id']}  {detail}")
+        if r["status"] != "unchanged":
+            out.append(f"  {r['status']:<11} {r['hospital_id']}  {_detail(r)}")
     out.append(f"  report -> {paths.DATA / 'monitor' / meta['checked_on']}/ (hospitals.csv, changes.csv, report.json)")
     return out

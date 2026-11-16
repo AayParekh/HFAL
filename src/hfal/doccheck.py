@@ -23,12 +23,14 @@ Output: counts on the terminal (no hospital ids, no labels) and runs/RUN_ID/doc_
 hospital (git-ignored). Eval hospitals appear only as counts: their per-hospital rows are never written.
 """
 
-import csv
-import json
 from collections import Counter
 
 from . import formcheck, paths
 from .ask import load_documents
+from .corrected import norm_bucket
+from .files import EXCEL, read_csv, read_json
+from .files import write_csv as _write_csv
+from .runfiles import hospital_files
 
 POLICY, SUMMARY, APPLICATION = "fap_policy", "plain_language_summary", "application_form"
 DEFAULT_MIN_ROWS = 2
@@ -48,9 +50,8 @@ def coverage(hospital_id: str, reference: str = "", application_share: float = D
 
 
 def _bucket(row: dict) -> str:
-    """The bucket to count: the person's call when there is one, otherwise the judge's. Spaces and capitals ignored."""
-    raw = (row.get("human_bucket") or "").strip() or (row.get("bucket") or "")
-    return raw.strip().lower().replace(" ", "_").replace("-", "_")
+    """The bucket to count: the person's call when there is one, otherwise the judge's."""
+    return norm_bucket((row.get("human_bucket") or "").strip() or (row.get("bucket") or ""))
 
 
 def judge_rows(run_id: str) -> list[dict] | None:
@@ -60,18 +61,21 @@ def judge_rows(run_id: str) -> list[dict] | None:
     run_dir = paths.RUNS / run_id
     f = run_dir / "judge.csv"
     if f.exists():
-        with open(f, newline="", encoding="utf-8-sig") as fh:
-            return list(csv.DictReader(fh))
+        return read_csv(f)
     files = sorted((run_dir / "judge").glob("*.json")) if (run_dir / "judge").is_dir() else []
     if not files:
         return None
-    return [r for p in files for r in json.loads(p.read_text(encoding="utf-8")).get("rows", [])]
+    return [r for p in files for r in read_json(p).get("rows", [])]
 
 
 def _asked(run_id: str) -> set[str]:
-    """Hospital answer files only: run-level files (final_run.py writes several) are left out by name."""
-    run_files = {"sample", "skipped", "usage", "failed", "final_run", "final_check", "summary"}
-    return {p.stem for p in (paths.RUNS / run_id).glob("*.json") if p.stem not in run_files}
+    """The hospitals with an answer file in the run (run-level files are left out by name)."""
+    return {p.stem for p in hospital_files(run_id)}
+
+
+def _yn(v):
+    """A coverage value for the CSV: Y / blank for booleans, the value itself otherwise."""
+    return "Y" if v is True else "" if v is False else v
 
 
 def build(dev_ids: list[str], eval_ids: list[str], run_id: str | None = None, min_rows: int = DEFAULT_MIN_ROWS,
@@ -114,7 +118,7 @@ def build(dev_ids: list[str], eval_ids: list[str], run_id: str | None = None, mi
                 if len(dnf.get(hid, [])) >= min_rows:
                     why.append(f"{len(dnf[hid])} doc_not_found rows")
                 dev_rows.append({
-                    "hospital_id": hid, **{k: ("Y" if v is True else "" if v is False else v) for k, v in cov.items()},
+                    "hospital_id": hid, **{k: _yn(v) for k, v in cov.items()},
                     "in_run": "Y" if hid in asked else "",
                     "disagreements": disagreements[hid] if hid in asked else "",
                     "doc_not_found_rows": len(dnf.get(hid, [])) if hid in asked else "",
@@ -129,17 +133,15 @@ def build(dev_ids: list[str], eval_ids: list[str], run_id: str | None = None, mi
             "suspects": sum(1 for r in dev_rows if r["suspect"]), "dev_rows": dev_rows, "min_rows": min_rows}
 
 
-def write_csv(run_id: str, rows: list[dict]) -> str:
-    return write_csv_to(paths.RUNS / run_id / "doc_check.csv", rows)
-
-
 def write_csv_to(out, rows: list[dict]) -> str:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=CSV_FIELDS, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+    """The dev rows as a CSV at `out` (utf-8-sig, so Excel shows accents right)."""
+    _write_csv(out, rows, CSV_FIELDS, encoding=EXCEL)
     return str(out)
+
+
+def write_csv(run_id: str, rows: list[dict]) -> str:
+    """The dev rows as runs/RUN_ID/doc_check.csv."""
+    return write_csv_to(paths.RUNS / run_id / "doc_check.csv", rows)
 
 
 def lines(result: dict) -> list[str]:

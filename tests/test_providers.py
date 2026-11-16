@@ -6,7 +6,8 @@ from types import SimpleNamespace as NS
 import anthropic
 import pytest
 
-from hfal import ask, paths
+from hfal import ask, model, paths
+from hfal.schema import schema_problems
 
 ANTHROPIC = {"provider": "anthropic", "name": "claude-test", "temperature": None, "max_output_tokens": 100}
 BEDROCK = {"provider": "bedrock", "name": "claude-test", "bedrock_id": "us.anthropic.test-v1:0",
@@ -60,22 +61,22 @@ def cache(tmp_path, monkeypatch):
 
 
 def use(monkeypatch, client):
-    monkeypatch.setattr(ask, "make_client", lambda cfg: client)
+    monkeypatch.setattr(model, "make_client", lambda cfg: client)
     return client
 
 
 def test_model_id_by_provider():
-    assert ask.model_id(ANTHROPIC) == "claude-test"
-    assert ask.model_id(BEDROCK) == "us.anthropic.test-v1:0"
+    assert model.model_id(ANTHROPIC) == "claude-test"
+    assert model.model_id(BEDROCK) == "us.anthropic.test-v1:0"
     with pytest.raises(ValueError, match="bedrock_id"):
-        ask.model_id({**BEDROCK, "bedrock_id": "<set from the Bedrock console>"})
+        model.model_id({**BEDROCK, "bedrock_id": "<set from the Bedrock console>"})
     with pytest.raises(ValueError, match="provider"):
-        ask.provider({"provider": "openai"})
+        model.provider({"provider": "openai"})
 
 
 def test_bedrock_sends_bedrock_id_and_records_provider(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    result, info = ask.call_model("sys", "user", BEDROCK)
+    result, info = model.call_model("sys", "user", BEDROCK)
     assert result == TOOL_INPUT
     assert fake.calls[0]["model"] == "us.anthropic.test-v1:0"
     assert "temperature" not in fake.calls[0] and "extra_body" not in fake.calls[0]
@@ -84,31 +85,31 @@ def test_bedrock_sends_bedrock_id_and_records_provider(cache, monkeypatch):
 
 def test_cache_is_per_provider_and_model(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("sys", "user", ANTHROPIC)
-    _, info = ask.call_model("sys", "user", ANTHROPIC)
+    model.call_model("sys", "user", ANTHROPIC)
+    _, info = model.call_model("sys", "user", ANTHROPIC)
     assert info["cached"] is True and len(fake.calls) == 1            # same provider: reused
-    _, info = ask.call_model("sys", "user", BEDROCK)
+    _, info = model.call_model("sys", "user", BEDROCK)
     assert info["cached"] is False and len(fake.calls) == 2           # other provider: asked again
-    _, info = ask.call_model("sys", "user", {**BEDROCK, "bedrock_id": "us.anthropic.other"})
+    _, info = model.call_model("sys", "user", {**BEDROCK, "bedrock_id": "us.anthropic.other"})
     assert info["cached"] is False and len(fake.calls) == 3
 
 
 def test_truncated_output_is_an_error_not_a_result(cache, monkeypatch):
     use(monkeypatch, FakeClient(stop_reason="max_tokens"))
-    with pytest.raises(ask.ModelFailed, match="max_output_tokens"):     # a batch records it and carries on
-        ask.call_model("sys", "user", BEDROCK)
+    with pytest.raises(model.ModelFailed, match="max_output_tokens"):     # a batch records it and carries on
+        model.call_model("sys", "user", BEDROCK)
     assert not list((cache / "cache").glob("*.json")) if (cache / "cache").exists() else True
 
 
 def test_temperature_is_sent_only_when_configured(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("sys", "user", {**BEDROCK, "temperature": 0})
+    model.call_model("sys", "user", {**BEDROCK, "temperature": 0})
     assert fake.calls[0]["extra_body"] == {"temperature": 0} and "temperature" not in fake.calls[0]
 
 
 def test_ping(monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    r = ask.ping(BEDROCK)
+    r = model.ping(BEDROCK)
     assert r == {"provider": "bedrock", "model_id": "us.anthropic.test-v1:0", "region": "us-east-1",
                  "reply": "ready", "input_tokens": 50, "output_tokens": 5}
     assert "tools" not in fake.calls[0] and "output_config" not in fake.calls[0]   # no effort configured: none sent
@@ -117,7 +118,7 @@ def test_ping(monkeypatch):
 def test_request_uses_structured_outputs_not_forced_tool_use(cache, monkeypatch):
     """claude-sonnet-5-5 answers a forced tool_choice with a 400, so none may be sent."""
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("sys", "user", {**ANTHROPIC, "effort": "high"})
+    model.call_model("sys", "user", {**ANTHROPIC, "effort": "high"})
     kw = fake.calls[0]
     assert "tools" not in kw and "tool_choice" not in kw
     assert kw["output_config"]["format"] == {"type": "json_schema", "schema": ask.SCHEMA}
@@ -127,9 +128,9 @@ def test_request_uses_structured_outputs_not_forced_tool_use(cache, monkeypatch)
 
 def test_effort_is_not_sent_unless_configured_and_changes_the_cache_key(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("sys", "user", ANTHROPIC)
+    model.call_model("sys", "user", ANTHROPIC)
     assert "effort" not in fake.calls[0]["output_config"]
-    _, info = ask.call_model("sys", "user", {**ANTHROPIC, "effort": "medium"})
+    _, info = model.call_model("sys", "user", {**ANTHROPIC, "effort": "medium"})
     assert info["cached"] is False and len(fake.calls) == 2
 
 
@@ -153,11 +154,11 @@ def test_schema_meets_the_structured_output_rules():
 
 def test_invalid_json_and_refusals_are_errors_not_results(cache, monkeypatch):
     use(monkeypatch, FakeClient(text="not json"))
-    with pytest.raises(ask.ModelFailed, match="not valid JSON"):
-        ask.call_model("sys", "user", ANTHROPIC)
+    with pytest.raises(model.ModelFailed, match="not valid JSON"):
+        model.call_model("sys", "user", ANTHROPIC)
     use(monkeypatch, FakeClient(stop_reason="refusal"))
-    with pytest.raises(ask.ModelFailed, match="declined"):
-        ask.call_model("sys2", "user", ANTHROPIC)
+    with pytest.raises(model.ModelFailed, match="declined"):
+        model.call_model("sys2", "user", ANTHROPIC)
     assert not (cache / "cache").exists() or not list((cache / "cache").glob("*.json"))
 
 
@@ -177,7 +178,7 @@ def test_new_run_id_has_no_unsafe_characters(monkeypatch):
     ("bedrock", 429, "ThrottlingException", "rate limited"),
 ])
 def test_explain_error(prov, status, msg, expect):
-    assert expect in ask.explain_error(prov, status, msg)
+    assert expect in model.explain_error(prov, status, msg)
 
 
 def test_api_errors_become_actionable_messages(cache, monkeypatch):
@@ -187,12 +188,12 @@ def test_api_errors_become_actionable_messages(cache, monkeypatch):
                                           response=httpx.Response(403, request=req), body=None)
     use(monkeypatch, FakeClient(error=err))
     with pytest.raises(RuntimeError, match="request access to this model"):
-        ask.call_model("sys", "user", BEDROCK)
+        model.call_model("sys", "user", BEDROCK)
 
 
 def test_make_client_requires_region_for_bedrock():
     with pytest.raises(ValueError, match="aws_region"):
-        ask.make_client({**BEDROCK, "aws_region": ""})
+        model.make_client({**BEDROCK, "aws_region": ""})
 
 
 def _event_stream_frame(event: dict) -> bytes:
@@ -253,7 +254,7 @@ def test_real_bedrock_client_end_to_end_against_a_local_server(cache, monkeypatc
     monkeypatch.setattr(anthropic, "AnthropicBedrock",
                         lambda **kw: real(base_url=f"http://127.0.0.1:{srv.server_port}", **kw))
     try:
-        result, info = ask.call_model("sys", "user", BEDROCK)
+        result, info = model.call_model("sys", "user", BEDROCK)
     finally:
         srv.shutdown()
     assert result == TOOL_INPUT and info["input_tokens"] == 7 and info["output_tokens"] == 3
@@ -310,7 +311,7 @@ class FakeInvoke:
 
 def test_openweight_sends_a_strict_json_schema_and_parses_the_reply(cache, monkeypatch):
     fake = use(monkeypatch, FakeInvoke())
-    result, info = ask.call_model("sys", "user", OPENWEIGHT)
+    result, info = model.call_model("sys", "user", OPENWEIGHT)
     assert result == TOOL_INPUT                                          # the reasoning is ignored
     kw = fake.calls[0]
     assert kw["modelId"] == "us.vendor.test-model"
@@ -326,16 +327,16 @@ def test_openweight_sends_a_strict_json_schema_and_parses_the_reply(cache, monke
     assert info["provider"] == "openweight" and info["model"] == "us.vendor.test-model"
     assert (info["input_tokens"], info["output_tokens"], info["cached"]) == (40, 9, False)   # prompt_tokens incl. cached
     assert (info["cache_read_tokens"], info["cache_write_tokens"]) == (30, 0)
-    _, info = ask.call_model("sys", "user", OPENWEIGHT)
+    _, info = model.call_model("sys", "user", OPENWEIGHT)
     assert info["cached"] is True and len(fake.calls) == 1
 
 
 def test_openweight_gets_exactly_claudes_prompt(cache, monkeypatch):
     """No format instructions are added for open-weight models (that was a Converse workaround)."""
     fake = use(monkeypatch, FakeInvoke())
-    ask.call_model("the system prompt", "the documents", OPENWEIGHT)
+    model.call_model("the system prompt", "the documents", OPENWEIGHT)
     claude = use(monkeypatch, FakeClient())
-    ask.call_model("the system prompt", "the documents", ANTHROPIC)
+    model.call_model("the system prompt", "the documents", ANTHROPIC)
     assert fake.calls[0]["messages"][0]["content"][0]["text"] == claude.calls[0]["system"][0]["text"] == "the system prompt"
     assert fake.calls[0]["messages"][1]["content"] == claude.calls[0]["messages"][0]["content"] == "the documents"
 
@@ -344,7 +345,7 @@ def test_openweight_gets_exactly_claudes_prompt(cache, monkeypatch):
 
 def test_claude_caches_the_system_prompt_for_an_hour(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("the system prompt", "the documents", ANTHROPIC)
+    model.call_model("the system prompt", "the documents", ANTHROPIC)
     assert fake.calls[0]["system"] == [{"type": "text", "text": "the system prompt",
                                         "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
     assert isinstance(fake.calls[0]["messages"][0]["content"], str)     # the documents carry no cache marker
@@ -352,12 +353,12 @@ def test_claude_caches_the_system_prompt_for_an_hour(cache, monkeypatch):
 
 def test_prompt_cache_can_be_turned_off_and_does_not_change_the_answer_cache(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("sys", "user", {**ANTHROPIC, "prompt_cache": False})
+    model.call_model("sys", "user", {**ANTHROPIC, "prompt_cache": False})
     assert fake.calls[0]["system"] == "sys"                              # exactly the request before caching
-    _, info = ask.call_model("sys", "user", ANTHROPIC)
+    _, info = model.call_model("sys", "user", ANTHROPIC)
     assert info["cached"] is True and len(fake.calls) == 1               # same prompt, same saved answer
     ow = use(monkeypatch, FakeInvoke())
-    ask.call_model("sys", "user", {**OPENWEIGHT, "prompt_cache": False})
+    model.call_model("sys", "user", {**OPENWEIGHT, "prompt_cache": False})
     assert ow.calls[0]["messages"][0] == {"role": "system", "content": "sys"} and "prompt_cache_options" not in ow.calls[0]
 
 
@@ -371,7 +372,7 @@ def test_claude_cache_counts_are_added_to_the_input(cache, monkeypatch):
             return r
 
     use(monkeypatch, Cached())
-    _, info = ask.call_model("sys", "user", ANTHROPIC)
+    _, info = model.call_model("sys", "user", ANTHROPIC)
     assert (info["input_tokens"], info["cache_read_tokens"], info["cache_write_tokens"]) == (7050, 7000, 0)
 
 
@@ -385,15 +386,15 @@ def test_openweight_reads_cache_counts_from_either_details_field(cache, monkeypa
             return {"body": io.BytesIO(json.dumps(r).encode())}
 
     use(monkeypatch, Responses())
-    _, info = ask.call_model("sys", "user", OPENWEIGHT)
+    _, info = model.call_model("sys", "user", OPENWEIGHT)
     assert (info["input_tokens"], info["cache_read_tokens"], info["cache_write_tokens"]) == (40, 0, 25)
 
 
 def test_openweight_cache_is_separate_from_claude_on_bedrock(cache, monkeypatch):
     use(monkeypatch, FakeInvoke())
-    ask.call_model("sys", "user", OPENWEIGHT)
+    model.call_model("sys", "user", OPENWEIGHT)
     use(monkeypatch, FakeClient())
-    _, info = ask.call_model("sys", "user", {**BEDROCK, "bedrock_id": "us.vendor.test-model"})
+    _, info = model.call_model("sys", "user", {**BEDROCK, "bedrock_id": "us.vendor.test-model"})
     assert info["cached"] is False
 
 
@@ -404,14 +405,14 @@ def test_openweight_cache_is_separate_from_claude_on_bedrock(cache, monkeypatch)
 def test_openweight_cut_off_or_filtered_replies_are_errors_not_results(cache, monkeypatch, stop, error):
     use(monkeypatch, FakeInvoke(stop=stop))
     with pytest.raises(RuntimeError, match=error):
-        ask.call_model("sys", "user", OPENWEIGHT)
+        model.call_model("sys", "user", OPENWEIGHT)
     assert not (cache / "cache").exists() or not list((cache / "cache").glob("*.json"))
 
 
 def test_openweight_bad_json_is_an_error(cache, monkeypatch):
     use(monkeypatch, FakeInvoke(text="Here are the answers: ..."))
     with pytest.raises(RuntimeError, match="not valid JSON"):
-        ask.call_model("sys", "user", OPENWEIGHT)
+        model.call_model("sys", "user", OPENWEIGHT)
 
 
 def test_openweight_access_denied_becomes_an_actionable_message(cache, monkeypatch):
@@ -421,7 +422,7 @@ def test_openweight_access_denied_becomes_an_actionable_message(cache, monkeypat
                        "ResponseMetadata": {"HTTPStatusCode": 400}}, "InvokeModel")
     use(monkeypatch, FakeInvoke(error=err))
     with pytest.raises(RuntimeError, match="request access to this model"):
-        ask.call_model("sys", "user", OPENWEIGHT)
+        model.call_model("sys", "user", OPENWEIGHT)
 
 
 def test_openweight_throttling_is_explained(cache, monkeypatch):
@@ -430,23 +431,23 @@ def test_openweight_throttling_is_explained(cache, monkeypatch):
                        "ResponseMetadata": {"HTTPStatusCode": 429}}, "InvokeModel")
     use(monkeypatch, FakeInvoke(error=err))
     with pytest.raises(RuntimeError, match="rate limited") as e:
-        ask.call_model("sys", "user", OPENWEIGHT)
-    assert not isinstance(e.value, ask.ModelFailed)       # would fail every hospital: stops a batch at once
+        model.call_model("sys", "user", OPENWEIGHT)
+    assert not isinstance(e.value, model.ModelFailed)       # would fail every hospital: stops a batch at once
 
 
 def test_openweight_ping(monkeypatch, tmp_path):
     monkeypatch.setattr(paths, "RUNS", tmp_path)
     fake = use(monkeypatch, FakeInvoke())
-    r = ask.ping(OPENWEIGHT)
+    r = model.ping(OPENWEIGHT)
     assert r["provider"] == "openweight" and r["model_id"] == "us.vendor.test-model" and r["reply"] == "ready"
     assert "response_format" not in fake.calls[0] and fake.calls[0]["messages"][0]["role"] == "user"
 
 
 def test_openweight_needs_a_region_and_a_bedrock_id():
     with pytest.raises(ValueError, match="aws_region"):
-        ask.make_client({**OPENWEIGHT, "aws_region": ""})
+        model.make_client({**OPENWEIGHT, "aws_region": ""})
     with pytest.raises(ValueError, match="bedrock_id"):
-        ask.model_id({**OPENWEIGHT, "bedrock_id": ""})
+        model.model_id({**OPENWEIGHT, "bedrock_id": ""})
 
 
 def test_openweight_price_key(monkeypatch):
@@ -475,7 +476,7 @@ def test_model_preset_replaces_only_the_named_section(tmp_path, monkeypatch):
     assert cfg["model"] == {"provider": "anthropic", "name": "fast-model", "preset": "fast"}
     assert cfg["judge"]["name"] == "base-judge"
     paths.use_model("judge", "other")
-    assert ask.model_id(paths.settings()["judge"]) == "us.vendor.x"
+    assert model.model_id(paths.settings()["judge"]) == "us.vendor.x"
 
 
 def test_unknown_model_preset_stops_with_the_list(tmp_path, monkeypatch):
@@ -503,17 +504,17 @@ def test_a_run_judged_by_one_model_is_not_judged_again_by_another(tmp_path):
 def test_claude_calls_stream_but_ping_does_not(cache, monkeypatch):
     """A v7 answer can pass 16K output tokens, and the SDK refuses a non-streaming request that large."""
     fake = use(monkeypatch, FakeClient())
-    ask.call_model("sys", "user", {**ANTHROPIC, "max_output_tokens": 32000})
+    model.call_model("sys", "user", {**ANTHROPIC, "max_output_tokens": 32000})
     assert fake.streamed is True and fake.calls[0]["max_tokens"] == 32000
     fake = use(monkeypatch, FakeClient())
-    ask.ping(ANTHROPIC)
+    model.ping(ANTHROPIC)
     assert fake.streamed is False
 
 
 def test_a_reply_that_is_not_json_is_kept_for_diagnosis_and_asked_once_more(cache, monkeypatch):
     fake = use(monkeypatch, FakeInvoke(text="Here you go:\n```json\n{\"answers\": []}\n```"))
     with pytest.raises(RuntimeError, match="Raw reply") as e:
-        ask.call_model("sys", "user", OPENWEIGHT)
+        model.call_model("sys", "user", OPENWEIGHT)
     assert len(fake.calls) == 2                                      # open-weight: one more try, then stop
     saved = sorted((cache / "cache" / "bad_replies").glob("*.txt"))
     assert [p.name[-6:] for p in saved] == ["-1.txt", "-2.txt"] and str(saved[1]) in str(e.value)
@@ -526,7 +527,7 @@ def test_claude_is_not_retried(cache, monkeypatch):
     """The Claude API enforces the format, so a broken reply means something else is wrong: stop at once."""
     fake = use(monkeypatch, FakeClient(text="not json"))
     with pytest.raises(RuntimeError, match="not valid JSON"):
-        ask.call_model("sys", "user", ANTHROPIC)
+        model.call_model("sys", "user", ANTHROPIC)
     assert len(fake.calls) == 1
 
 
@@ -548,7 +549,7 @@ class IncompleteThenComplete(FakeClient):
 
 def test_an_incomplete_claude_reply_is_kept_aside_and_asked_once_more(cache, monkeypatch):
     fake = use(monkeypatch, IncompleteThenComplete())
-    result, info = ask.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))
+    result, info = model.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))
     assert result["answers"] == [ANSWER] and len(fake.calls) == 2 and not info["cached"]
     bad = list((cache / "cache" / "bad_replies").glob("*-1.txt"))[0].read_text()
     assert "1 of 1 criteria not answered: ['c1']" in bad
@@ -558,20 +559,20 @@ def test_an_incomplete_claude_reply_is_kept_aside_and_asked_once_more(cache, mon
 
 def test_incomplete_twice_fails_the_hospital_not_the_batch(cache, monkeypatch):
     fake = use(monkeypatch, FakeClient(text=json.dumps(TOOL_INPUT)))
-    with pytest.raises(ask.IncompleteReply, match="criteria not answered") as e:
-        ask.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))
-    assert isinstance(e.value, ask.ModelFailed) and len(fake.calls) == 2
+    with pytest.raises(model.IncompleteReply, match="criteria not answered") as e:
+        model.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))
+    assert isinstance(e.value, model.ModelFailed) and len(fake.calls) == 2
     assert not list((cache / "cache").glob("*.json"))                         # nothing cached
 
 
 def test_an_incomplete_cached_reply_is_moved_aside_and_asked_again(cache, monkeypatch):
     use(monkeypatch, FakeClient(text=json.dumps(TOOL_INPUT)))
-    ask.call_model("sys", "user", ANTHROPIC)                                  # cached before the check existed
+    model.call_model("sys", "user", ANTHROPIC)                                  # cached before the check existed
     fake = use(monkeypatch, FakeClient(text=json.dumps({**TOOL_INPUT, "answers": [ANSWER]})))
-    result, info = ask.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))
+    result, info = model.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))
     assert result["answers"] == [ANSWER] and len(fake.calls) == 1 and not info["cached"]
     assert len(list((cache / "cache" / "bad_replies").glob("*-cached.json"))) == 1
-    _, info = ask.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))      # the new answer is the cache now
+    _, info = model.call_model("sys", "user", ANTHROPIC, check=_needs("c1"))      # the new answer is the cache now
     assert info["cached"] and len(fake.calls) == 1
 
 
@@ -591,7 +592,7 @@ class FlakyInvoke(FakeInvoke):
 
 def test_a_reply_in_the_wrong_shape_is_rejected_then_the_retry_is_used(cache, monkeypatch):
     fake = use(monkeypatch, FlakyInvoke())
-    result, info = ask.call_model("sys", "user", OPENWEIGHT)
+    result, info = model.call_model("sys", "user", OPENWEIGHT)
     assert result == TOOL_INPUT and len(fake.calls) == 2
     bad = list((cache / "cache" / "bad_replies").glob("*.txt"))[0].read_text()
     assert "missing ['psa_counties']" in bad and "unexpected ['psa_county']" in bad
@@ -599,13 +600,13 @@ def test_a_reply_in_the_wrong_shape_is_rejected_then_the_retry_is_used(cache, mo
 
 def test_cached_reply_in_the_wrong_shape_is_never_used(cache, monkeypatch):
     use(monkeypatch, FakeInvoke())
-    ask.call_model("sys", "user", OPENWEIGHT)
+    model.call_model("sys", "user", OPENWEIGHT)
     f = next((cache / "cache").glob("*.json"))
     saved = json.loads(f.read_text())
     saved["tool_input"] = {"answers": [{"criterion_id": "x", "status": "YES"}], "languages": [], "psa_counties": []}
     f.write_text(json.dumps(saved))
     with pytest.raises(RuntimeError, match="does not fit the reply format"):
-        ask.call_model("sys", "user", OPENWEIGHT)
+        model.call_model("sys", "user", OPENWEIGHT)
 
 
 @pytest.mark.parametrize("value, problem", [
@@ -620,15 +621,15 @@ def test_cached_reply_in_the_wrong_shape_is_never_used(cache, monkeypatch):
     ([], "expected object"),
 ])
 def test_schema_problems(value, problem):
-    found = ask.schema_problems(value, ask.SCHEMA)
+    found = schema_problems(value, ask.SCHEMA)
     assert (not found) if problem is None else any(problem in p for p in found)
 
 
 def test_one_surrounding_code_fence_is_removed_and_the_content_still_checked(cache, monkeypatch):
     use(monkeypatch, FakeInvoke(text="```json\n" + json.dumps(TOOL_INPUT) + "\n```"))
-    result, _ = ask.call_model("sys", "user", OPENWEIGHT)
+    result, _ = model.call_model("sys", "user", OPENWEIGHT)
     assert result == TOOL_INPUT
     fake = use(monkeypatch, FakeInvoke(text="```json\n{\"answers\": []}\n```"))
     with pytest.raises(RuntimeError, match="does not fit the reply format"):
-        ask.call_model("sys2", "user", OPENWEIGHT)
+        model.call_model("sys2", "user", OPENWEIGHT)
     assert len(fake.calls) == 2

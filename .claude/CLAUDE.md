@@ -271,11 +271,15 @@ be site changes or sheet mistakes. Corrected labels are never used for eval or f
 
 `src/hfal/`: `fetch.py` (download; OS trust store via truststore; ingests `data/manual/{hospital_id}/`),
 `discover.py` (keyword crawl from the saved landing page, candidate selection, health-system name filter), `browser.py` (headless Chromium fallback for fetch and discover), `extract.py` (PDF/Word/HTML to per-page text, flags `needs_ocr`), `ocr.py` (Amazon Textract for scanned pages, called by extract),
-`tag.py` (keyword doc-type rules), `ask.py` (model call + quote verification), `verify.py`, `formcheck.py` (match to the state form), `fpl.py` (which year's poverty figures), `maxfpl.py` (400% statement), `schema.py`,
+`tag.py` (keyword doc-type rules), `model.py` (the one provider boundary: `call_model`, clients, response cache, retry, ledger row; `ping`), `ask.py` (prompt, per-hospital pipeline, quote verification, code checks, run files), `verify.py`, `formcheck.py` (match to the state form), `fpl.py` (which year's poverty figures), `maxfpl.py` (400% statement), `schema.py` (answer vocabulary, JSON-schema helpers, reply checker),
 `grade.py`, `score.py`, `explain.py` (checks the plain-language templates against the law text), `judge.py` (explains dev disagreements; never decides a match), `consistency.py` (consistency point by point, combined in code; v7 on), `sizecheck.py` (error rate by prompt size, dev only), `doccheck.py` (`doc_not_found` rows and document coverage: finds discovery problems), `attrition.py` (the exclusion
 rule, shared by `scripts/attrition.py` and `monitor.py`), `monitor.py` (monthly check), `report.py` (readable results with explanations), `corrected.py` (corrected labels
-for scoring), `usage.py` (token and cost summary, ledger `runs/usage.csv`, prices in settings.yaml), `cli.py`. Config in `config/` (`settings.yaml`, `criteria.yaml`, `rubric.yaml`).
-`sources.py` (landing rows from the hospital table). `scripts/`: run by hand (`criteria_from_csv.py`,
+for scoring), `usage.py` (token and cost summary, ledger `runs/usage.csv`, prices in settings.yaml), `cli.py` (one handler per sub-command, `COMMANDS` table). Config in `config/` (`settings.yaml`, `criteria.yaml`, `rubric.yaml`).
+Shared helpers (refactor of Nov 16; use these instead of re-opening files by hand): `files.py` (CSV/JSON read and write,
+atomic writes, Excel encoding `EXCEL`), `hospitals.py` (the hospital table: `load_table`, `by_id`, `sets`, `dev_ids`),
+`manifest.py` (`latest_manifest`, `full_manifest`, `latest_before`, `previous_sha`), `runfiles.py` (`hospital_records`
+over a run folder, `RUN_FILES`, `answers_by_criterion`), `sources.py` (data/sources.csv: the row labels
+`LANDING_LABEL` / `DISCOVERED_LABEL` / `BROWSER_SUFFIX`, `landing_urls`, read/write; `hfal sources`). `scripts/`: run by hand (`criteria_from_csv.py`,
 `seed_hospitals.py`, `golden_convert.py`, `check_grader.py`, `review_discovery.py`, `judge_review.py` (merges several
 runs' `judge.csv` into one git-ignored sheet `data/review/judge_review.csv` for hand bucketing, and splits
 `human_bucket` / `human_note` back; adds `hospital_name` from `data/hospitals.csv` for reading),

@@ -209,6 +209,22 @@ aws sso login --profile hackathon   # for OCR of scanned PDFs in `extract` (sett
 uv run pytest
 ```
 
+## Code layout (`src/hfal/`)
+
+One module per pipeline step, named after its `hfal` command: `sources`, `fetch` (+ `browser`), `discover`, `extract`
+(+ `ocr`), `tag`, `ask`, `grade`, `score`, `judge`, `report`, `monitor`, `usage`, plus the checks `doccheck`,
+`sizecheck`, `consistency`. The code checks that may change an answer are `verify` (quotes), `formcheck`, `fpl`,
+`maxfpl` and `consistency`; `explain` checks the plain-language templates against the law text; `attrition` is the
+exclusion rule; `corrected` the corrected labels; `runcheck` the final-run file check. `cli.py` maps each
+sub-command to one function.
+
+`model.py` is the only module that talks to a model provider (`call_model`: cache, send, check the reply, log the
+cost). `ask.py` builds the prompt and runs one hospital through the model and the code checks.
+
+Shared helpers, so no module opens files on its own: `files.py` (CSV and JSON reading and writing, atomic writes,
+the Excel-friendly encoding for review sheets and reports), `hospitals.py` (the hospital table), `manifest.py`
+(a hospital's fetch manifests), `runfiles.py` (the answer files of a run), `paths.py` (folders and settings).
+
 ## Storage layout
 
 ```

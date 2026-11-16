@@ -10,9 +10,10 @@ from pathlib import Path
 
 import yaml
 
-CONFIG = Path(__file__).resolve().parents[2] / "config"
-TEMPLATES = CONFIG / "explanations.yaml"
-LAW = CONFIG / "reference" / "phl_2807k_9a.txt"
+from . import paths
+
+TEMPLATES = paths.CONFIG / "explanations.yaml"
+LAW = paths.CONFIG / "reference" / "phl_2807k_9a.txt"
 
 BASES = {"law", "law_and_state_form", "review_standard"}
 FIELDS = ("title", "basis", "law", "rule", "why_it_matters", "if_yes", "if_no")

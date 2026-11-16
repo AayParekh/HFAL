@@ -24,28 +24,29 @@ Prints counts only. Never prints hospital names, ids or labels.
 """
 
 import argparse
-import csv
 import difflib
-import os
 import re
 import sys
-import tempfile
 from collections import Counter
 from pathlib import Path
 
 import yaml
 
+from hfal import paths
+from hfal.files import read_csv_rows, write_csv
 from hfal.schema import NA, NO, YES, hospital_id
 
-ROOT = Path(__file__).resolve().parents[1]
 ID_COL = "Permanent Facility Identifier (PFI)"
 OUTCOME_COLS = {"letter": "COMPLIANCE GRADE", "auto_fail": "Automatic Fail?", "noncompliant_count": "Noncompliant Categories Count"}
 TITLE_MIN_SIMILARITY = 0.75
 GENERIC = {"yes": YES, "y": YES, "true": YES, "no": NO, "n": NO, "false": NO, "n/a": NA, "na": NA}
 NOT_LANGUAGES = {"english", "and", "only", "the", "in", "available", "also"}
+LABEL_FIELDS = ["hospital_id", "criterion_id", "label"]
+GRADE_FIELDS = ["hospital_id", "letter", "auto_fail", "noncompliant_count"]
 
 
 def col_index(letter: str) -> int:
+    """Excel column letter -> 0-based index ("A" -> 0, "AB" -> 27)."""
     n = 0
     for ch in letter.upper():
         n = n * 26 + ord(ch) - 64
@@ -81,6 +82,22 @@ def to_bool(raw: str) -> str:
     return {"true": "TRUE", "yes": "TRUE", "false": "FALSE", "no": "FALSE"}.get(v, "")
 
 
+def _criterion_columns(names: list[str], columns: list[dict], errors: list[str]) -> list[tuple[str, int]]:
+    """(criterion id, column index) for every criterion column whose golden title matches the data dictionary's."""
+    crit = []
+    for c in (c for c in columns if c["criterion"]):
+        i = col_index(c["col"])
+        if i >= len(names):
+            errors.append(f"{c['col']} ({c['id']}): golden sheet has no column {c['col']}")
+            continue
+        sim = difflib.SequenceMatcher(None, norm_title(names[i]), norm_title(c["title"])).ratio()
+        if sim < TITLE_MIN_SIMILARITY:
+            errors.append(f"{c['col']} ({c['id']}): golden title {names[i]!r} does not match {c['title']!r} (similarity {sim:.2f})")
+            continue
+        crit.append((c["id"], i))
+    return crit
+
+
 def convert(rows: list[list[str]], columns: list[dict]) -> tuple[list[dict], list[dict], Counter, list[str]]:
     """Returns (labels, grades, stats, errors)."""
     errors, stats = [], Counter()
@@ -96,18 +113,7 @@ def convert(rows: list[list[str]], columns: list[dict]) -> tuple[list[dict], lis
 
     i_id = find(ID_COL)
     i_out = {k: find(v) for k, v in OUTCOME_COLS.items()}
-
-    crit = []
-    for c in (c for c in columns if c["criterion"]):
-        i = col_index(c["col"])
-        if i >= len(names):
-            errors.append(f"{c['col']} ({c['id']}): golden sheet has no column {c['col']}")
-            continue
-        sim = difflib.SequenceMatcher(None, norm_title(names[i]), norm_title(c["title"])).ratio()
-        if sim < TITLE_MIN_SIMILARITY:
-            errors.append(f"{c['col']} ({c['id']}): golden title {names[i]!r} does not match {c['title']!r} (similarity {sim:.2f})")
-            continue
-        crit.append((c["id"], i))
+    crit = _criterion_columns(names, columns, errors)
     if errors:
         return [], [], stats, errors
 
@@ -115,7 +121,10 @@ def convert(rows: list[list[str]], columns: list[dict]) -> tuple[list[dict], lis
     for r in rows[2:]:
         if not any(x.strip() for x in r):
             continue
-        cell = lambda i: r[i] if i is not None and i < len(r) else ""
+
+        def cell(i, r=r):
+            return r[i] if i is not None and i < len(r) else ""
+
         stats["rows"] += 1
         hid = hospital_id(cell(i_id))
         if not hid:
@@ -141,7 +150,7 @@ def convert(rows: list[list[str]], columns: list[dict]) -> tuple[list[dict], lis
             "auto_fail": to_bool(cell(i_out["auto_fail"])),
             "noncompliant_count": count if count.isdigit() else "",
         })
-        for k in ("letter", "auto_fail", "noncompliant_count"):
+        for k in GRADE_FIELDS[1:]:
             if not grades[-1][k]:
                 stats[f"missing_or_unrecognized:{k}"] += 1
     stats["hospitals"] = len(grades)
@@ -151,25 +160,14 @@ def convert(rows: list[list[str]], columns: list[dict]) -> tuple[list[dict], lis
     return labels, grades, stats, errors
 
 
-def write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
-    os.replace(tmp, path)
-
-
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", type=Path, default=ROOT / "golden" / "golden_raw.csv")
-    p.add_argument("--columns", type=Path, default=ROOT / "config" / "criteria_columns.yaml")
-    p.add_argument("--out-dir", type=Path, default=ROOT / "golden")
+    p.add_argument("--src", type=Path, default=paths.GOLDEN / "golden_raw.csv")
+    p.add_argument("--columns", type=Path, default=paths.CONFIG / "criteria_columns.yaml")
+    p.add_argument("--out-dir", type=Path, default=paths.GOLDEN)
     args = p.parse_args()
 
-    with open(args.src, newline="", encoding="utf-8-sig") as f:
-        rows = list(csv.reader(f))
+    rows = read_csv_rows(args.src)
     columns = yaml.safe_load(args.columns.read_text(encoding="utf-8"))["columns"]
     labels, grades, stats, errors = convert(rows, columns)
     if errors:
@@ -178,8 +176,8 @@ def main() -> int:
             print(f"  - {e}", file=sys.stderr)
         return 1
 
-    write_csv(args.out_dir / "golden.csv", ["hospital_id", "criterion_id", "label"], labels)
-    write_csv(args.out_dir / "golden_grades.csv", ["hospital_id", "letter", "auto_fail", "noncompliant_count"], grades)
+    write_csv(args.out_dir / "golden.csv", labels, LABEL_FIELDS, atomic=True)
+    write_csv(args.out_dir / "golden_grades.csv", grades, GRADE_FIELDS, atomic=True)
     for k, v in sorted(stats.items()):
         print(f"{k}: {v}")
     print(f"wrote {len(labels)} labels -> {args.out_dir / 'golden.csv'}")

@@ -13,15 +13,14 @@ Re-run scripts/attrition.py afterwards so data/working_set.csv shows the new set
 """
 
 import argparse
-import csv
-import os
 import random
 import sys
-import tempfile
 from datetime import date
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from hfal import paths
+from hfal.files import read_csv, read_csv_with_fields, write_csv
+from hfal.hospitals import table_path
+
 DRAW_NOTE = "drawn into dev"
 
 
@@ -47,16 +46,11 @@ def main() -> None:
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
-    table_path = ROOT / "data" / "hospitals.csv"
-    with open(table_path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        fields = reader.fieldnames
-        table = list(reader)
+    fields, table = read_csv_with_fields(table_path())
     if any(DRAW_NOTE in r.get("note", "") for r in table):
         sys.exit("the split is frozen: a draw note is already in data/hospitals.csv. Not drawing again.")
 
-    with open(ROOT / "data" / "working_set.csv", newline="", encoding="utf-8") as f:
-        working = {r["hospital_id"] for r in csv.DictReader(f)}
+    working = {r["hospital_id"] for r in read_csv(paths.DATA / "working_set.csv")}
     candidates = [r["hospital_id"] for r in table if r["set"] == "eval" and r["hospital_id"] in working]
     working_dev = sum(r["set"] == "dev" and r["hospital_id"] in working for r in table)
     n = draw_count(working_dev, len(candidates), args.dev_share)
@@ -76,13 +70,8 @@ def main() -> None:
     if args.dry_run:
         print("dry run: nothing written")
         return
-    fd, tmp = tempfile.mkstemp(dir=table_path.parent, suffix=".tmp")
-    with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
-        w.writeheader()
-        w.writerows(table)
-    os.replace(tmp, table_path)
-    print(f"wrote {table_path}. Now run: uv run python scripts/attrition.py --update-plan")
+    write_csv(table_path(), table, fields, atomic=True)
+    print(f"wrote {table_path()}. Now run: uv run python scripts/attrition.py --update-plan")
 
 
 if __name__ == "__main__":

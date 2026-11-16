@@ -21,22 +21,28 @@ Select, by fixed rules (no model, no golden labels):
     as a whole word ("smh" = Spruce Memorial Hospital). Another system also matches by the acronym of the
     part of its name it does not share with this hospital's system ("flh" = ... Finger Lakes Health).
 
+Headless browser (Nov 14): when plain HTTP finds no PDF or Word document, the crawl is run again with every page
+rendered in Chromium (browser.py) and its result is used if it finds documents, or finds anything where plain HTTP
+found nothing. Pages it selects are labelled so that `hfal fetch` renders them too.
+
 Output: data/discovered/{hospital_id}.json (every candidate with its score and why it was or was not
 selected) and rows labelled "discovered" in data/sources.csv. The same pages always give the same
 result, so the monthly check can diff runs.
 """
 
-import csv
-import json
 import re
 import time
+from contextlib import nullcontext
 from datetime import datetime, timezone
-from pathlib import Path
+from typing import Callable
 from urllib.parse import urldefrag, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import paths
+from . import hospitals, paths
+from .files import write_json
+from .manifest import latest_manifest
+from .sources import BROWSER_SUFFIX, DISCOVERED_LABEL, landing_urls, read_sources, write_sources
 
 MAX_DEPTH = 2
 MAX_PAGES = 10         # pages fetched per hospital, landing page included
@@ -44,9 +50,7 @@ MAX_DOCS = 12          # PDFs selected per hospital
 MAX_PAGES_KEPT = 3     # extra HTML pages selected per hospital
 FOLLOW_MIN_SCORE = 3   # a link must have a strong keyword to be followed
 PDF_MIN_SCORE = 3
-LANDING_LABEL = "HFA landing page"
-DISCOVERED_LABEL = "discovered"
-BROWSER_SUFFIX = " (browser)"   # sources.csv label suffix: fetch this page with the headless browser
+DOC_KINDS = ("pdf", "docx")
 
 STRONG = [r"financial[ -]?(assistance|aid)", r"charity[ -]?care", r"sliding[ -]?(fee|scale)",
           r"uniform[ -]?(financial|application)", r"hospital[ -]?financial[ -]?assistance", r"\bhfa\b", r"\bfap\b",
@@ -128,6 +132,9 @@ UNIQUE_WORD_MIN_LEN = 5
 OWN_NAME_BONUS = 3
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Hospital and health-system names (the name filter)
+
 def name_words(text: str) -> set[str]:
     return set(re.findall(r"[a-z]{3,}", text.lower().replace("'", "")))
 
@@ -146,13 +153,13 @@ def acronym(name: str) -> str:
     return a if len(a) >= 2 and a not in ACRONYM_STOP else ""
 
 
-def name_filter(hid: str, hospitals: dict[str, dict]) -> dict | None:
+def name_filter(hid: str, table: dict[str, dict]) -> dict | None:
     """Names to look for in candidate links.
 
     {'own': {'words', 'acronyms'}, 'others': {key: {'words', 'acronym'}}} where others are every other
     hospital (key = hospital_id) and every other health system (key = 'system: <name>'). None if hid unknown.
     """
-    me = hospitals.get(hid)
+    me = table.get(hid)
     if not me:
         return None
     my_system = me.get("system", "")
@@ -160,7 +167,7 @@ def name_filter(hid: str, hospitals: dict[str, dict]) -> dict | None:
     own_words = name_words(me["name"]) - GENERIC_NAME_WORDS - name_words(my_system)
     own_acr = {a for a in (acronym(me["name"]), acronym(my_system)) if a}
     word_count: dict[str, int] = {}
-    for h in hospitals.values():
+    for h in table.values():
         for w in distinctive(h["name"], h.get("city", ""), h.get("system", "")):
             word_count[w] = word_count.get(w, 0) + 1
     others = {}
@@ -173,15 +180,33 @@ def name_filter(hid: str, hospitals: dict[str, dict]) -> dict | None:
         if words or acronyms or short:
             others[key] = {"words": words, "unique": unique, "acronyms": acronyms, "suffix_acronyms": short}
 
-    for oid, h in hospitals.items():
+    for oid, h in table.items():
         if oid != hid:
             add(oid, distinctive(h["name"], h.get("city", ""), h.get("system", "")), {acronym(h["name"])})
     shared = name_words(my_system)
-    for system in sorted({h.get("system", "") for h in hospitals.values()} - {my_system, ""}):
+    for system in sorted({h.get("system", "") for h in table.values()} - {my_system, ""}):
         tail = " ".join(w for w in re.findall(r"[A-Za-z']+", system) if w.lower().replace("'", "") not in shared)
         add(f"system: {system}", distinctive(tail) or distinctive(system), {acronym(system), acronym(tail)})
     return {"own": {"words": own_words, "acronyms": own_acr}, "others": others}
 
+
+def _names(nf: dict | None, anchor: str, url: str) -> tuple[bool, list[str]]:
+    """(names this hospital?, ids of other same-system hospitals it names)."""
+    if not nf:
+        return False, []
+    path = urlparse(url).path
+    tokens = set(re.findall(r"[a-z0-9]+", _norm(f"{anchor} {path}").replace("'", "")))
+    stem = path.rstrip("/").rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    last = re.split(r"[-_ .]+", stem)[-1] if stem else ""
+    own = bool(nf["own"]["words"] & tokens) or bool(nf["own"]["acronyms"] & tokens)
+    others = sorted(k for k, o in nf["others"].items()
+                    if (o["words"] and o["words"] <= tokens) or (o["unique"] & tokens) or (o["acronyms"] & tokens)
+                    or last in o["suffix_acronyms"])
+    return own, others
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Scoring a link and reading its language
 
 def _norm(text: str) -> str:
     return re.sub(r"(%20|[-_+/.])+", " ", text.lower())
@@ -227,6 +252,9 @@ def language(anchor: str, url: str) -> str | None:
     return "english" if codes else None
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# URLs and pages
+
 def site(url: str) -> str:
     host = urlparse(url).netloc.lower().split(":")[0]
     return ".".join(host.split(".")[-2:])
@@ -266,11 +294,15 @@ def page_links(html: bytes | str, base_url: str) -> list[tuple[str, str]]:
     return out
 
 
-def crawl(landing: str, get) -> dict:
-    """get(url) -> (status, content_type, body_bytes) or (status, "", b"") on failure.
+# ---------------------------------------------------------------------------------------------------------------
+# Crawl and select (pure given the responses)
 
-    Returns {"pages": [...], "candidates": [...]} before selection. Deterministic for fixed responses.
-    """
+# get(url) -> (status, content_type, body_bytes), or (status, "", b"") on failure
+Getter = Callable[[str], tuple]
+
+
+def crawl(landing: str, get: Getter) -> dict:
+    """Returns {"pages": [...], "candidates": [...]} before selection. Deterministic for fixed responses."""
     home = site(landing)
     queue = [(0, -99, landing)]               # (depth, -score, url): best links first, breadth-first
     queued = {landing}
@@ -312,19 +344,18 @@ def crawl(landing: str, get) -> dict:
     return {"pages": pages, "candidates": [c for c in cands.values() if c["kind"] != "html" or c["url"] in fetched]}
 
 
-def _names(nf: dict | None, anchor: str, url: str) -> tuple[bool, list[str]]:
-    """(names this hospital?, ids of other same-system hospitals it names)."""
-    if not nf:
-        return False, []
-    path = urlparse(url).path
-    tokens = set(re.findall(r"[a-z0-9]+", _norm(f"{anchor} {path}").replace("'", "")))
-    stem = path.rstrip("/").rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
-    last = re.split(r"[-_ .]+", stem)[-1] if stem else ""
-    own = bool(nf["own"]["words"] & tokens) or bool(nf["own"]["acronyms"] & tokens)
-    others = sorted(k for k, o in nf["others"].items()
-                    if (o["words"] and o["words"] <= tokens) or (o["unique"] & tokens) or (o["acronyms"] & tokens)
-                    or last in o["suffix_acronyms"])
-    return own, others
+def crawl_all(landings: list[str], get: Getter) -> dict:
+    """crawl() from each landing page of a hospital (a few have more than one), pages and candidates pooled."""
+    merged = {"pages": [], "candidates": []}
+    for landing in landings:
+        c = crawl(landing, get)
+        merged["pages"] += c["pages"]
+        merged["candidates"] += c["candidates"]
+    return merged
+
+
+def _other_hospital_reason(c: dict) -> str:
+    return f"names another hospital ({', '.join(c['names_other_hospital'])})"
 
 
 def select(crawled: dict, landing: str, nf: dict | None = None) -> dict:
@@ -343,13 +374,13 @@ def select(crawled: dict, landing: str, nf: dict | None = None) -> dict:
             langs.add(c["language"])
         rows.append(c)
 
-    pdfs = [c for c in rows if c["kind"] in ("pdf", "docx", "translation")]
+    pdfs = [c for c in rows if c["kind"] in (*DOC_KINDS, "translation")]
     pages = [c for c in rows if c["kind"] == "html" and c["url"] != landing]
     for c in pdfs:
         if c["language"] not in (None, "english") or c["kind"] == "translation":
             c["reason"] = f"translation ({c['language']})"
         elif c["names_other_hospital"]:
-            c["reason"] = f"names another hospital ({', '.join(c['names_other_hospital'])})"
+            c["reason"] = _other_hospital_reason(c)
         elif c["score"] < PDF_MIN_SCORE:
             c["reason"] = f"score {c['score']} < {PDF_MIN_SCORE}"
         else:
@@ -360,8 +391,7 @@ def select(crawled: dict, landing: str, nf: dict | None = None) -> dict:
     eligible_pages = sorted((c for c in pages if c["score"] >= FOLLOW_MIN_SCORE and not c["names_other_hospital"]),
                             key=lambda c: (-c["rank"], c["url"]))
     for c in pages:
-        c["reason"] = (f"names another hospital ({', '.join(c['names_other_hospital'])})" if c["names_other_hospital"]
-                       else f"score {c['score']} < {FOLLOW_MIN_SCORE}")
+        c["reason"] = _other_hospital_reason(c) if c["names_other_hospital"] else f"score {c['score']} < {FOLLOW_MIN_SCORE}"
     for i, c in enumerate(eligible_pages):
         c["reason"] = "selected" if i < MAX_PAGES_KEPT else f"over the {MAX_PAGES_KEPT}-page cap"
     for c in rows:
@@ -370,20 +400,26 @@ def select(crawled: dict, landing: str, nf: dict | None = None) -> dict:
     return {"pages_visited": crawled["pages"], "languages_seen": sorted(langs), "candidates": rows}
 
 
-def _landing_rows(only: set[str] | None) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    with open(paths.DATA / "sources.csv", newline="", encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            if r.get("label") == LANDING_LABEL and (only is None or r["hospital_id"] in only):
-                out.setdefault(r["hospital_id"], []).append(r["url"].strip())
-    return out
+def n_docs(res: dict) -> int:
+    """Selected PDF and Word documents in a select() result."""
+    return sum(c["selected"] and c["kind"] in DOC_KINDS for c in res["candidates"])
 
+
+def n_pages(res: dict) -> int:
+    """Selected web pages in a select() result."""
+    return sum(c["selected"] and c["kind"] == "html" for c in res["candidates"])
+
+
+def n_selected(res: dict) -> int:
+    return sum(c["selected"] for c in res["candidates"])
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# sources.csv and the saved landing page
 
 def update_sources(results: dict[str, dict]) -> int:
     """Replace this script's rows for the hospitals just discovered; keep every other row."""
-    src = paths.DATA / "sources.csv"
-    with open(src, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+    rows = read_sources()
     keep = [r for r in rows if not (r.get("label", "").startswith(DISCOVERED_LABEL) and r["hospital_id"] in results)]
     have = {(r["hospital_id"], r["url"].strip()) for r in keep}
     new = []
@@ -395,17 +431,12 @@ def update_sources(results: dict[str, dict]) -> int:
                 label = f"{DISCOVERED_LABEL} {c['kind']}" + (BROWSER_SUFFIX if c.get("via_browser") and c["kind"] == "html" else "")
                 new.append({"hospital_id": hid, "url": c["url"], "label": label})
                 have.add((hid, c["url"]))
-    with open(src, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["hospital_id", "url", "label"], extrasaction="ignore", lineterminator="\n")
-        w.writeheader()
-        w.writerows(keep + new)
+    write_sources(keep + new)
     return len(new)
 
 
 def _saved_landing(hid: str, url: str) -> bytes | None:
     """The landing page as `hfal fetch` last saved it, if it was fetched successfully."""
-    from .fetch import latest_manifest
-
     for item in latest_manifest(hid):
         if item["url"] == url and item.get("ext") == "html":
             f = paths.RAW / hid / "files" / f"{item['sha8']}.html"
@@ -415,105 +446,94 @@ def _saved_landing(hid: str, url: str) -> bytes | None:
 
 
 def load_hospitals() -> dict[str, dict]:
-    """data/hospitals.csv (seeded by scripts/seed_hospitals.py), or {} if missing."""
-    f = paths.DATA / "hospitals.csv"
-    if not f.exists():
-        return {}
-    with open(f, newline="", encoding="utf-8") as fh:
-        return {r["hospital_id"]: r for r in csv.DictReader(fh)}
+    """data/hospitals.csv by hospital_id, or {} if missing (then the health-system name filter is off)."""
+    return hospitals.by_id()
 
 
-def n_docs(res: dict) -> int:
-    """Selected PDF and Word documents in a select() result."""
-    return sum(c["selected"] and c["kind"] in ("pdf", "docx") for c in res["candidates"])
+# ---------------------------------------------------------------------------------------------------------------
+# All hospitals
+
+def _polite_getter(raw_get: Callable[[str], tuple], robots, cfg: dict, ignored: list[str]) -> Getter:
+    """Wrap a raw request function with the robots.txt rule, the delay between requests and error recording.
+    raw_get(url) -> (status, content_type, body); any exception becomes a recorded "error: ..." status."""
+    def get(url: str) -> tuple:
+        if not robots.allowed(url):
+            if cfg["respect_robots"]:
+                return "robots_disallowed", "", b""
+            ignored.append(url)
+        time.sleep(cfg["delay_seconds"])
+        try:
+            return raw_get(url)
+        except Exception as e:  # network errors are recorded, never fatal
+            return f"error: {type(e).__name__}", "", b""
+    return get
 
 
-def n_selected(res: dict) -> int:
-    return sum(c["selected"] for c in res["candidates"])
+def _with_saved_landing(get: Getter, landing: str, saved: bytes) -> Getter:
+    """A getter that answers the landing page from the saved copy and everything else live."""
+    return lambda u: (200, "text/html", saved) if u == landing else get(u)
+
+
+def _discover_one(hid: str, landings: list[str], get: Getter, bget: Getter | None, nf: dict | None,
+                  ignored: list[str]) -> dict:
+    """Crawl and select for one hospital: plain HTTP first, the browser's crawl when plain HTTP finds no document."""
+    merged = {"pages": [], "candidates": []}
+    warnings = []
+    for landing in landings:
+        saved = _saved_landing(hid, landing)
+        if saved is not None and not page_links(saved, landing):
+            warnings.append(f"saved landing page has no links (bot check?); fetched live: {landing}")
+            saved = None
+        live = _with_saved_landing(get, landing, saved) if saved is not None else get
+        c = crawl(landing, live)
+        merged["pages"] += c["pages"]
+        merged["candidates"] += c["candidates"]
+    res = select(merged, landings[0], nf)
+    browser_note = {"tried": False}
+    if bget is not None and n_docs(res) == 0:
+        # Plain HTTP found no PDF or Word document: crawl again, rendering every page in the browser
+        # (pages built by JavaScript, bot checks that a real browser passes without a CAPTCHA).
+        bres = select(crawl_all(landings, bget), landings[0], nf)
+        used = n_docs(bres) > 0 or (n_selected(res) == 0 and n_selected(bres) > 0)
+        browser_note = {"tried": True, "used": used, "plain_docs": 0, "browser_docs": n_docs(bres),
+                        "browser_pages_visited": bres["pages_visited"]}
+        if used:
+            for cand in bres["candidates"]:
+                cand["via_browser"] = True
+            res = bres
+    res.update(hospital_id=hid, landing=landings, warnings=warnings, robots_txt_ignored=sorted(set(ignored)),
+               browser=browser_note, discovered_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    return res
 
 
 def discover_all(only: set[str] | None = None) -> None:
-    from .fetch import Robots, _make_browser, _Null, make_client
+    from .fetch import Robots, _make_browser, make_client      # fetch imports page_links from here: import late
 
     cfg = paths.settings()["fetch"]
     out_dir = paths.DATA / "discovered"
     out_dir.mkdir(parents=True, exist_ok=True)
     results = {}
-    hospitals = load_hospitals()
-    if not hospitals:
+    table = load_hospitals()
+    if not table:
         print("note: data/hospitals.csv missing; health-system name filter is off")
     browser = _make_browser(cfg)
-    with make_client(cfg["timeout_seconds"]) as client, (browser or _Null()):
+    with make_client(cfg["timeout_seconds"]) as client, (browser or nullcontext()):
         robots = Robots(client)
         ignored: list[str] = []     # pages fetched although robots.txt disallows them (respect_robots: false)
 
-        def get(url):
-            if not robots.allowed(url):
-                if cfg["respect_robots"]:
-                    return "robots_disallowed", "", b""
-                ignored.append(url)
-            time.sleep(cfg["delay_seconds"])
-            try:
-                r = client.get(url)
-            except Exception as e:  # network errors are recorded, never fatal
-                return f"error: {type(e).__name__}", "", b""
+        def plain(url):
+            r = client.get(url)
             return r.status_code, r.headers.get("content-type", ""), r.content
 
-        def bget(url):
-            """The same request through the headless browser (fetch.browser_fallback)."""
-            if not robots.allowed(url):
-                if cfg["respect_robots"]:
-                    return "robots_disallowed", "", b""
-                ignored.append(url)
-            time.sleep(cfg["delay_seconds"])
-            try:
-                return browser.get(url)
-            except Exception as e:  # never fatal, as for plain requests
-                return f"error: {type(e).__name__}", "", b""
-
-        for hid, landings in sorted(_landing_rows(only).items()):
-            merged = {"pages": [], "candidates": []}
-            warnings = []
+        get = _polite_getter(plain, robots, cfg, ignored)
+        bget = _polite_getter(browser.get, robots, cfg, ignored) if browser is not None else None
+        for hid, landings in sorted(landing_urls(only).items()):
             ignored.clear()
-            for landing in landings:
-                saved = _saved_landing(hid, landing)
-                if saved is not None and not page_links(saved, landing):
-                    warnings.append(f"saved landing page has no links (bot check?); fetched live: {landing}")
-                    saved = None
-                live = get
-                if saved is not None:
-                    live = lambda u, _l=landing, _s=saved: (200, "text/html", _s) if u == _l else get(u)
-                c = crawl(landing, live)
-                merged["pages"] += c["pages"]
-                merged["candidates"] += c["candidates"]
-            nf = name_filter(hid, hospitals)
-            res = select(merged, landings[0], nf)
-            browser_note = {"tried": False}
-            if browser is not None and n_docs(res) == 0:
-                # Plain HTTP found no PDF or Word document: crawl again, rendering every page in the browser
-                # (pages built by JavaScript, bot checks that a real browser passes without a CAPTCHA).
-                bmerged = {"pages": [], "candidates": []}
-                for landing in landings:
-                    c = crawl(landing, bget)
-                    bmerged["pages"] += c["pages"]
-                    bmerged["candidates"] += c["candidates"]
-                bres = select(bmerged, landings[0], nf)
-                used = n_docs(bres) > 0 or (n_selected(res) == 0 and n_selected(bres) > 0)
-                browser_note = {"tried": True, "used": used, "plain_docs": 0, "browser_docs": n_docs(bres),
-                                "browser_pages_visited": bres["pages_visited"]}
-                if used:
-                    for cand in bres["candidates"]:
-                        cand["via_browser"] = True
-                    res = bres
-            res.update(hospital_id=hid, landing=landings, warnings=warnings,
-                       robots_txt_ignored=sorted(set(ignored)), browser=browser_note,
-                       discovered_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-            (out_dir / f"{hid}.json").write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
+            res = _discover_one(hid, landings, get, bget, name_filter(hid, table), ignored)
+            write_json(out_dir / f"{hid}.json", res, ensure_ascii=False)
             results[hid] = res
-            n_pdf = sum(c["selected"] and c["kind"] in ("pdf", "docx") for c in res["candidates"])
-            n_html = sum(c["selected"] and c["kind"] == "html" for c in res["candidates"])
             n_other = sum(bool(c.get("names_other_hospital")) for c in res["candidates"])
-            print(f"{hid}  pages={len(res['pages_visited'])}  docs={n_pdf}  html={n_html}  "
+            print(f"{hid}  pages={len(res['pages_visited'])}  docs={n_docs(res)}  html={n_pages(res)}  "
                   f"languages={len(res['languages_seen'])}  dropped_other_hospital={n_other}")
     added = update_sources(results)
     print(f"added {added} rows to {paths.DATA / 'sources.csv'}")

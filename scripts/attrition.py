@@ -33,92 +33,86 @@ markers in PLAN.md. Hospital ids never go into the table, so PLAN.md can be comm
 """
 
 import argparse
-import csv
-import json
 import sys
 from collections import Counter
-from pathlib import Path
 
 import yaml
 
 from hfal import paths
-from hfal.attrition import (CATEGORY_TEXT, STAGES, WORKING_STAGE, classify, failure_category,  # noqa: F401
-                            browser_used, full_manifest, ocr_flags, robots_ignored, worst)
+from hfal.attrition import (CATEGORY_TEXT, STAGES, WORKING_STAGE, browser_used, classify, full_manifest, ocr_flags,
+                            robots_ignored)
+from hfal.files import read_json, write_csv
 from hfal.grade import grade_hospital
+from hfal.hospitals import load_table
+from hfal.runfiles import answers_by_criterion
 
-ROOT = Path(__file__).resolve().parents[1]
 START, END = "<!-- attrition:start -->", "<!-- attrition:end -->"
 # The rule itself (classify and the categories) lives in src/hfal/attrition.py, shared with `hfal monitor`.
 
 
+def _count_line(rows: list[dict], flag: str, what: str) -> str:
+    """A line under the table: working hospitals with `flag` set, by set."""
+    n = {s: sum(r["set"] == s and r.get(flag) == "yes" and r["stages_passed"] >= WORKING_STAGE for r in rows)
+         for s in ("dev", "eval")}
+    return f"Working set {what}: {n['dev']} dev, {n['eval']} eval."
+
+
 def robots_line(rows: list[dict]) -> str:
     """The line under the table: hospitals in the working set with something collected despite robots.txt."""
-    n = {s: sum(r["set"] == s and r["robots_txt_ignored"] == "yes" and r["stages_passed"] >= WORKING_STAGE
-                for r in rows) for s in ("dev", "eval")}
-    return (f"Working set collected despite robots.txt (`fetch.respect_robots: false`, since Nov 12): "
-            f"{n['dev']} dev, {n['eval']} eval.")
+    return _count_line(rows, "robots_txt_ignored",
+                       "collected despite robots.txt (`fetch.respect_robots: false`, since Nov 12)")
 
 
 def browser_line(rows: list[dict]) -> str:
     """The second line under the table: working hospitals with something collected by the headless browser."""
-    n = {s: sum(r["set"] == s and r.get("collected_with_browser") == "yes" and r["stages_passed"] >= WORKING_STAGE
-                for r in rows) for s in ("dev", "eval")}
-    return (f"Working set collected with a headless browser (`fetch.browser_fallback: true`, since Nov 14): "
-            f"{n['dev']} dev, {n['eval']} eval.")
+    return _count_line(rows, "collected_with_browser",
+                       "collected with a headless browser (`fetch.browser_fallback: true`, since Nov 14)")
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--run", help="run_id under runs/ to add the asked / graded stages")
-    p.add_argument("--update-plan", action="store_true")
-    args = p.parse_args()
+def hand_exclusions() -> dict[str, str]:
+    """hospital_id -> reason, from data/exclusions.yaml (git-ignored); {} when there is none."""
+    f = paths.DATA / "exclusions.yaml"
+    excl = (yaml.safe_load(f.read_text(encoding="utf-8")) or {}) if f.exists() else {}
+    return {str(e["hospital_id"]): e["reason"] for e in excl.get("exclusions") or []}
 
-    with open(paths.DATA / "hospitals.csv", newline="", encoding="utf-8") as f:
-        table = list(csv.DictReader(f))
-    excl_file = paths.DATA / "exclusions.yaml"
-    excl = (yaml.safe_load(excl_file.read_text(encoding="utf-8")) or {}) if excl_file.exists() else {}
-    excluded = {str(e["hospital_id"]): e["reason"] for e in excl.get("exclusions") or []}
-    run_dir = paths.RUNS / args.run if args.run else None
+
+def run_outcome(run_dir, hid: str, too_large: set[str], ids: list[str], rubric: dict) -> str:
+    """What became of the hospital in the run: too_large, not_asked, graded or incomplete."""
+    rec = run_dir / f"{hid}.json"
+    if hid in too_large:
+        return "too_large"
+    if not rec.exists():
+        return "not_asked"
+    answers = answers_by_criterion(read_json(rec))
+    return "graded" if grade_hospital(answers, ids, rubric)["status"] == "graded" else "incomplete"
+
+
+def build_rows(table: list[dict], run_id: str | None) -> list[dict]:
+    """One row per hospital of the table: stages passed, why it stopped, and the robots.txt / browser flags."""
+    excluded = hand_exclusions()
+    run_dir = paths.RUNS / run_id if run_id else None
     rubric, ids = (paths.rubric(), [c["id"] for c in paths.criteria()]) if run_dir else (None, None)
-    n_stages = len(STAGES) if run_dir else WORKING_STAGE
     too_large = set()       # hospitals `hfal ask` skipped because their prompt was too large for one call
     if run_dir and (run_dir / "skipped.json").exists():
-        skipped = json.loads((run_dir / "skipped.json").read_text(encoding="utf-8"))
-        too_large = {str(x["hospital_id"]) for x in skipped.get("hospitals", [])}
+        too_large = {str(x["hospital_id"]) for x in read_json(run_dir / "skipped.json").get("hospitals", [])}
 
     rows = []
     for h in table:
         hid = h["hospital_id"]
         entries = full_manifest(hid)
         disc_file = paths.DATA / "discovered" / f"{hid}.json"
-        disc = json.loads(disc_file.read_text(encoding="utf-8")) if disc_file.exists() else None
-        ocr = ocr_flags(hid, entries)
-        outcome = None
-        if run_dir:
-            rec = run_dir / f"{hid}.json"
-            if hid in too_large:
-                outcome = "too_large"
-            elif not rec.exists():
-                outcome = "not_asked"
-            else:
-                answers = {a["criterion_id"]: a for a in json.loads(rec.read_text(encoding="utf-8"))["answers"]}
-                outcome = "graded" if grade_hospital(answers, ids, rubric)["status"] == "graded" else "incomplete"
-        passed, cat = classify(h, entries, disc, ocr, excluded, outcome)
+        disc = read_json(disc_file) if disc_file.exists() else None
+        outcome = run_outcome(run_dir, hid, too_large, ids, rubric) if run_dir else None
+        passed, cat = classify(h, entries, disc, ocr_flags(hid, entries), excluded, outcome)
         rows.append({"hospital_id": hid, "set": h.get("set", ""), "stages_passed": passed,
                      "last_stage": STAGES[passed - 1], "stopped_because": CATEGORY_TEXT.get(cat, ""),
                      "category": cat, "robots_txt_ignored": "yes" if robots_ignored(entries, disc) else "",
                      "collected_with_browser": "yes" if browser_used(entries, disc) else ""})
+    return rows
 
-    with open(paths.DATA / "attrition.csv", "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
-    working = [r for r in rows if r["stages_passed"] >= WORKING_STAGE]
-    with open(paths.DATA / "working_set.csv", "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["hospital_id", "set"], lineterminator="\n")
-        w.writeheader()
-        w.writerows({"hospital_id": r["hospital_id"], "set": r["set"]} for r in working)
 
+def markdown_table(rows: list[dict], n_stages: int) -> str:
+    """Counts per stage, dev losses with reasons; never a hospital id."""
     lines = ["| Stage | Dev left | Dev lost here (count: why) | Eval left |", "|---|---|---|---|"]
     for i in range(n_stages):
         dev_left = sum(r["set"] == "dev" and r["stages_passed"] > i for r in rows)
@@ -127,25 +121,44 @@ def main() -> int:
         reasons = Counter(r["stopped_because"] or "-" for r in lost)
         why = "; ".join(f"{n}: {w}" for w, n in sorted(reasons.items())) if i else ""
         lines.append(f"| {i + 1}. {STAGES[i]} | {dev_left} | {why} | {eval_left} |")
-    lines.append("")
-    lines.append(robots_line(rows))
-    lines.append("")
-    lines.append(browser_line(rows))
-    table_md = "\n".join(lines)
+    lines += ["", robots_line(rows), "", browser_line(rows)]
+    return "\n".join(lines)
+
+
+def update_plan(table_md: str, run_id: str | None) -> bool:
+    """Rewrite the table between the attrition markers of PLAN.md. False when the markers are missing."""
+    plan = paths.ROOT / "PLAN.md"
+    s = plan.read_text(encoding="utf-8")
+    if START not in s or END not in s:
+        return False
+    head, rest = s.split(START, 1)
+    _, tail = rest.split(END, 1)
+    note = f"\n_Generated by `scripts/attrition.py`{' --run ' + run_id if run_id else ''}. Do not edit by hand._\n\n"
+    plan.write_text(head + START + note + table_md + "\n" + END + tail, encoding="utf-8")
+    return True
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--run", help="run_id under runs/ to add the asked / graded stages")
+    p.add_argument("--update-plan", action="store_true")
+    args = p.parse_args()
+
+    rows = build_rows(load_table(), args.run)
+    write_csv(paths.DATA / "attrition.csv", rows, list(rows[0]))
+    working = [r for r in rows if r["stages_passed"] >= WORKING_STAGE]
+    write_csv(paths.DATA / "working_set.csv", ({"hospital_id": r["hospital_id"], "set": r["set"]} for r in working),
+              ["hospital_id", "set"])
+
+    table_md = markdown_table(rows, len(STAGES) if args.run else WORKING_STAGE)
     print(table_md)
     print(f"working set: {sum(r['set'] == 'dev' for r in working)} dev, {sum(r['set'] == 'eval' for r in working)} eval"
           f" -> {paths.DATA / 'working_set.csv'}")
 
     if args.update_plan:
-        plan = ROOT / "PLAN.md"
-        s = plan.read_text(encoding="utf-8")
-        if START not in s or END not in s:
+        if not update_plan(table_md, args.run):
             print("PLAN.md has no attrition markers", file=sys.stderr)
             return 1
-        head, rest = s.split(START, 1)
-        _, tail = rest.split(END, 1)
-        note = f"\n_Generated by `scripts/attrition.py`{' --run ' + args.run if args.run else ''}. Do not edit by hand._\n\n"
-        plan.write_text(head + START + note + table_md + "\n" + END + tail, encoding="utf-8")
         print("updated PLAN.md")
     return 0
 

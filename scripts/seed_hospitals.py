@@ -24,21 +24,19 @@ Reads ONLY identity columns of the golden sheet ("Permanent Facility Identifier 
 """
 
 import argparse
-import csv
-import os
 import re
 import sys
-import tempfile
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 
+from hfal import paths
+from hfal.files import read_csv_rows, read_csv_with_fields, write_csv
 from hfal.schema import hospital_id
+from hfal.sources import GOLDEN_SOURCE
 
-ROOT = Path(__file__).resolve().parents[1]
 FIELDS = ["hospital_id", "name", "address", "city", "zip", "system", "set", "landing_url", "url_source", "verified_at",
           "note"]
-GOLDEN_SOURCE = "golden sheet (Sept 2025)"
 COLS = {"hospital_id": "Permanent Facility Identifier (PFI)", "name": "Hospital Name", "city": "City",
         "system": "System", "link": "HFA Link"}
 OPTIONAL_COLS = {"address": "Address", "zip": "Zip"}   # identity too; left blank when a sheet lacks them
@@ -79,8 +77,7 @@ def zip_code(cell: str) -> str:
 
 def read_golden(path: Path, stats: Counter) -> list[dict]:
     """One dict per hospital: hospital_id, name, city, system, urls. First row wins on duplicate PFIs."""
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        rows = list(csv.reader(f))
+    rows = read_csv_rows(path)
     if len(rows) < 3:
         raise SystemExit(f"{path}: expected two header rows and data")
     names = [n.strip() for n in rows[1]]  # row 1 holds group labels, row 2 the column names
@@ -89,7 +86,9 @@ def read_golden(path: Path, stats: Counter) -> list[dict]:
         raise SystemExit(f"{path}: column(s) not found in the second header row: {missing}")
     idx = {k: names.index(v) for k, v in COLS.items()}
     idx.update({k: names.index(v) for k, v in OPTIONAL_COLS.items() if v in names})
-    cell = lambda r, k: r[idx[k]] if k in idx and idx[k] < len(r) else ""
+
+    def cell(r, k):
+        return r[idx[k]] if k in idx and idx[k] < len(r) else ""
 
     out, seen = [], set()
     for r in rows[2:]:
@@ -113,8 +112,7 @@ def read_golden(path: Path, stats: Counter) -> list[dict]:
 
 def read_sample_ids(path: Path) -> set[str]:
     """PFIs from the sample sheet. The header row is found by looking for 'Hospital' and 'PFI' cells."""
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        rows = list(csv.reader(f))
+    rows = read_csv_rows(path)
     for idx, r in enumerate(rows):
         cells = [c.strip() for c in r]
         if "PFI" in cells and "Hospital" in cells:
@@ -137,6 +135,7 @@ def from_golden(g: dict, dev_ids: set[str] | None) -> dict:
 
 def seed(existing: list[dict], existing_fields: list[str], golden: list[dict],
          dev_ids: set[str] | None) -> tuple[list[dict], Counter]:
+    """The new table and counts: existing rows kept as they are, golden hospitals added, missing columns filled."""
     stats = Counter()
     by_id = {r["hospital_id"]: dict(r) for r in existing}
     missing_cols = [f for f in FIELDS if f not in existing_fields]
@@ -157,7 +156,10 @@ def seed(existing: list[dict], existing_fields: list[str], golden: list[dict],
             stats["landing_url_edited_by_hand"] += 1
     golden_ids = {g["hospital_id"] for g in golden}
     stats["in_table_not_in_golden"] = sum(h not in golden_ids for h in by_id)
-    key = lambda h: (0, int(h)) if h.isdigit() else (1, h)
+
+    def key(h):
+        return (0, int(h)) if h.isdigit() else (1, h)
+
     rows = [{f: by_id[h].get(f, "") for f in FIELDS} for h in sorted(by_id, key=key)]
     stats["hospitals"] = len(rows)
     stats["dev"] = sum(r["set"] == "dev" for r in rows)
@@ -168,9 +170,9 @@ def seed(existing: list[dict], existing_fields: list[str], golden: list[dict],
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--golden", type=Path, default=ROOT / "golden" / "golden_raw.csv")
-    p.add_argument("--sample", type=Path, default=ROOT / "data" / "sample_raw.csv")
-    p.add_argument("--dst", type=Path, default=ROOT / "data" / "hospitals.csv")
+    p.add_argument("--golden", type=Path, default=paths.GOLDEN / "golden_raw.csv")
+    p.add_argument("--sample", type=Path, default=paths.DATA / "sample_raw.csv")
+    p.add_argument("--dst", type=Path, default=paths.DATA / "hospitals.csv")
     args = p.parse_args()
 
     stats = Counter()
@@ -179,21 +181,10 @@ def main() -> int:
     if dev_ids is None:
         print(f"note: {args.sample} not found; 'set' left blank for new hospitals")
 
-    existing, fields = [], []
-    if args.dst.exists():
-        with open(args.dst, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            fields = list(reader.fieldnames or [])
-            existing = list(reader)
+    fields, existing = read_csv_with_fields(args.dst) if args.dst.exists() else ([], [])
     rows, s = seed(existing, fields, golden, dev_ids)
     stats.update(s)
-
-    fd, tmp = tempfile.mkstemp(dir=args.dst.parent, suffix=".tmp")
-    with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=FIELDS, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
-    os.replace(tmp, args.dst)
+    write_csv(args.dst, rows, FIELDS, atomic=True)
     for k, v in sorted(stats.items()):
         print(f"{k}: {v}")
     print(f"wrote {len(rows)} hospitals -> {args.dst}")

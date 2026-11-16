@@ -9,14 +9,13 @@ No model call and no golden labels: it reads only runs/RUN_ID/*.json and runs/us
 """
 from __future__ import annotations
 
-import json
+from collections import Counter
 from pathlib import Path
 
 from . import paths, usage
+from .files import read_json_or_none, write_json
+from .runfiles import RUN_FILES, hospital_files  # noqa: F401  (RUN_FILES: kept here for callers that import it)
 from .schema import ANSWERS, NO, YES
-
-RUN_FILES = {"failed.json", "skipped.json", "usage.json", "final_run.json", "final_check.json", "sample.json",
-             "summary.json"}
 
 
 def check_hospital(data: dict | None, hospital_id: str, expect: dict) -> list[str]:
@@ -66,20 +65,18 @@ def check_hospital(data: dict | None, hospital_id: str, expect: dict) -> list[st
 
 
 def load(run_id: str, hospital_id: str) -> dict | None:
+    """The hospital's answer file; None when it is missing, a stand-in that fails every check when it is unreadable
+    (reported as wrong, never silently skipped)."""
     f = paths.RUNS / run_id / f"{hospital_id}.json"
     if not f.exists():
         return None
-    try:
-        return json.loads(f.read_text(encoding="utf-8"))
-    except ValueError:
-        return {"hospital_id": None}          # unreadable: reported as wrong, never silently skipped
+    return read_json_or_none(f) or {"hospital_id": None}
 
 
 def stray_files(run_id: str, ids: list[str]) -> list[str]:
     """Hospital files in the run folder for hospitals that were not meant to be in it."""
     want = set(ids)
-    return sorted(p.stem for p in (paths.RUNS / run_id).glob("*.json")
-                  if p.name not in RUN_FILES and p.stem not in want)
+    return sorted(p.stem for p in hospital_files(run_id) if p.stem not in want)
 
 
 def ledger_rows(run_id: str, purpose: str = "ask") -> list[dict]:
@@ -129,13 +126,10 @@ def check_run(run_id: str, ids: list[str], expect: dict, too_large: list[dict]) 
             problems[hid] = p
         else:
             ok[hid] = data
-    rows = ledger_rows(run_id)
-    status = {}
-    for r in rows:
-        status[r["status"]] = status.get(r["status"], 0) + 1
+    status = Counter(r["status"] for r in ledger_rows(run_id))
     return {"run_id": run_id, "hospitals_planned": len(ids), "recorded_ok": len(ok),
             "too_large_not_asked": sorted(big), "problems": problems, "stray_files": stray_files(run_id, ids),
-            "billed_calls_by_status": status, "complete": not problems,
+            "billed_calls_by_status": dict(status), "complete": not problems,
             **aggregates(ok)}
 
 
@@ -154,6 +148,5 @@ def write_run_files(run_id: str, check: dict, too_large: list[dict]) -> None:
 
 def save(run_id: str, name: str, obj: dict) -> Path:
     out = paths.RUNS / run_id / name
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json(out, obj, ensure_ascii=False)
     return out

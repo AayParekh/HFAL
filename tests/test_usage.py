@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from hfal import ask, paths, usage
+from hfal import model, paths, usage
 
 PRICES = {"claude-sonnet-5-5": {"input": 2.0, "output": 10.0}, "claude-opus-5-5": {"input": 4.0, "output": 20.0},
           "bedrock/us.anthropic.x": {"input": 3.0, "output": 15.0}}
@@ -136,8 +136,8 @@ def ledger(tmp_path):
 
 
 def test_a_billed_call_is_a_ledger_row_with_its_tag_and_cost(env, monkeypatch):
-    monkeypatch.setattr(ask, "make_client", lambda cfg: FakeClient())
-    ask.call_model("s", "u", CFG, tag={"purpose": "ask", "run_id": "r1", "hospital_id": "h1"})
+    monkeypatch.setattr(model, "make_client", lambda cfg: FakeClient())
+    model.call_model("s", "u", CFG, tag={"purpose": "ask", "run_id": "r1", "hospital_id": "h1"})
     (row,) = ledger(env)
     assert (row["purpose"], row["run_id"], row["hospital_id"], row["status"]) == ("ask", "r1", "h1", "ok")
     assert int(row["input_tokens"]) == 1000 and int(row["output_tokens"]) == 200
@@ -146,9 +146,9 @@ def test_a_billed_call_is_a_ledger_row_with_its_tag_and_cost(env, monkeypatch):
 
 def test_a_cached_answer_is_not_billed_again(env, monkeypatch):
     client = FakeClient()
-    monkeypatch.setattr(ask, "make_client", lambda cfg: client)
-    ask.call_model("s", "u", CFG, tag={"purpose": "ask"})
-    _, again = ask.call_model("s", "u", CFG, tag={"purpose": "ask"})
+    monkeypatch.setattr(model, "make_client", lambda cfg: client)
+    model.call_model("s", "u", CFG, tag={"purpose": "ask"})
+    _, again = model.call_model("s", "u", CFG, tag={"purpose": "ask"})
     assert again["cached"] is True and client.calls == 1 and len(ledger(env)) == 1
 
 
@@ -156,19 +156,19 @@ def test_a_cached_answer_is_not_billed_again(env, monkeypatch):
                                        ({"stop_reason": "refusal"}, "refusal"),
                                        ({"text": "not json"}, "bad_json")])
 def test_a_call_that_fails_after_the_reply_is_still_billed_and_logged(env, monkeypatch, kw, status):
-    monkeypatch.setattr(ask, "make_client", lambda cfg: FakeClient(**kw))
+    monkeypatch.setattr(model, "make_client", lambda cfg: FakeClient(**kw))
     with pytest.raises(RuntimeError):
-        ask.call_model("s", "u", CFG, tag={"purpose": "judge"})
+        model.call_model("s", "u", CFG, tag={"purpose": "judge"})
     (row,) = ledger(env)
     assert row["status"] == status and row["purpose"] == "judge" and int(row["input_tokens"]) == 1000
 
 
 def test_a_ledger_that_cannot_be_written_does_not_stop_the_run(env, monkeypatch, capsys):
-    monkeypatch.setattr(ask, "make_client", lambda cfg: FakeClient())
+    monkeypatch.setattr(model, "make_client", lambda cfg: FakeClient())
     monkeypatch.setattr(usage, "ledger_path", lambda: env / "runs" / "nope" / "x" / "usage.csv")
     (env / "runs").mkdir()
     (env / "runs" / "nope").write_text("a file where a folder should be")
-    result, _ = ask.call_model("s", "u", CFG)
+    result, _ = model.call_model("s", "u", CFG)
     assert result == {"answers": [], "languages": [], "psa_counties": []}
     assert "could not write the usage ledger" in capsys.readouterr().err
 
@@ -176,12 +176,12 @@ def test_a_ledger_that_cannot_be_written_does_not_stop_the_run(env, monkeypatch,
 # ---- adding the ledger up --------------------------------------------------------------------------------
 
 def test_report_adds_up_by_purpose_and_flags_billed_failures(env, monkeypatch):
-    monkeypatch.setattr(ask, "make_client", lambda cfg: FakeClient())
-    ask.call_model("s", "u1", CFG, tag={"purpose": "ask", "run_id": "r1"})
-    ask.call_model("s", "u2", CFG, tag={"purpose": "ask", "run_id": "r2"})
-    monkeypatch.setattr(ask, "make_client", lambda cfg: FakeClient(stop_reason="max_tokens"))
+    monkeypatch.setattr(model, "make_client", lambda cfg: FakeClient())
+    model.call_model("s", "u1", CFG, tag={"purpose": "ask", "run_id": "r1"})
+    model.call_model("s", "u2", CFG, tag={"purpose": "ask", "run_id": "r2"})
+    monkeypatch.setattr(model, "make_client", lambda cfg: FakeClient(stop_reason="max_tokens"))
     with pytest.raises(RuntimeError):
-        ask.call_model("s", "u3", CFG, tag={"purpose": "judge", "run_id": "r2"})
+        model.call_model("s", "u3", CFG, tag={"purpose": "judge", "run_id": "r2"})
     rows = usage.read_ledger()
     by = {g["purpose"]: g for g in usage.aggregate(rows, "purpose")}
     assert by["ask"]["calls"] == 2 and by["ask"]["input_tokens"] == 2000 and by["judge"]["calls"] == 1

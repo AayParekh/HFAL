@@ -11,28 +11,23 @@ never change config files. Deterministic. Prints counts only.
 """
 
 import argparse
-import csv
 import sys
 from collections import Counter
 from pathlib import Path
 
-import yaml
-
+from hfal import paths
+from hfal.files import read_csv
 from hfal.grade import grade_hospital
-
-ROOT = Path(__file__).resolve().parents[1]
+from hfal.score import load_golden_grades
 
 
 def load(golden_dir: Path):
-    with open(golden_dir / "golden.csv", newline="", encoding="utf-8") as f:
-        labels = list(csv.DictReader(f))
-    with open(golden_dir / "golden_grades.csv", newline="", encoding="utf-8") as f:
-        grades = {r["hospital_id"]: r for r in csv.DictReader(f)}
+    """(hospital_id -> {criterion_id -> answer record}, CSSNY's grades) with every label treated as verified."""
     records: dict[str, dict] = {}
-    for r in labels:
+    for r in read_csv(golden_dir / "golden.csv"):
         records.setdefault(r["hospital_id"], {})[r["criterion_id"]] = {
             "answer": r["label"], "quote": "golden label", "quote_verified": True}
-    return records, grades
+    return records, load_golden_grades(golden_dir / "golden_grades.csv")
 
 
 def compare(records: dict, grades: dict, ids: list[str], rubric: dict) -> dict:
@@ -59,7 +54,10 @@ def compare(records: dict, grades: dict, ids: list[str], rubric: dict) -> dict:
 def report(name: str, res: dict) -> None:
     s = res["stats"]
     graded = s["hospitals"] - s["incomplete"]
-    pct = lambda a, b: f"{a}/{b} ({100 * a / b:.1f}%)" if b else "n/a"
+
+    def pct(a, b):
+        return f"{a}/{b} ({100 * a / b:.1f}%)" if b else "n/a"
+
     print(f"\n== {name}")
     print(f"  letter agreement:     {pct(s['letter_match'], graded)}   (incomplete, not compared: {s['incomplete']})")
     print(f"  auto-fail agreement:  {pct(s['auto_fail_match'], graded)}")
@@ -72,12 +70,14 @@ def report(name: str, res: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--golden-dir", type=Path, default=ROOT / "golden")
+    p.add_argument("--golden-dir", type=Path, default=paths.GOLDEN)
     args = p.parse_args()
 
     records, grades = load(args.golden_dir)
-    rubric = yaml.safe_load((ROOT / "config" / "rubric.yaml").read_text(encoding="utf-8"))
-    ids = [c["id"] for c in yaml.safe_load((ROOT / "config" / "criteria.yaml").read_text(encoding="utf-8"))["criteria"]]
+    rubric = paths.rubric()
+    # criteria.yaml by name, not settings.yaml's criteria_file: the labels are CSSNY's 18 criteria, which every
+    # prompt version shares.
+    ids = [c["id"] for c in paths.load_yaml(paths.DEFAULT_CRITERIA_FILE)["criteria"]]
 
     report("current rubric.yaml and criteria.yaml", compare(records, grades, ids, rubric))
 

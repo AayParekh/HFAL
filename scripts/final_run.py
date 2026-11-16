@@ -31,7 +31,6 @@ Hospital ids are written only under runs/ (git-ignored); the terminal shows ids 
 """
 
 import argparse
-import json
 import random
 import subprocess
 import sys
@@ -41,6 +40,8 @@ from pathlib import Path
 
 from hfal import paths, runcheck
 from hfal.cli import check_versions, working_set
+from hfal.files import read_json
+from hfal.model import model_id, provider
 
 PILOT_FILES = ["pilot_ids.txt", "pilot_ids_partly.txt"]
 MAX_CALL_USD = 1.50             # the most one Kimi K3-at-max hospital cost in the pilot was $1.33 (ledger, Nov 12)
@@ -116,7 +117,6 @@ def deal(chars: dict[str, int], ids: list[str], workers: int) -> list[list[str]]
 
 
 def estimate_usd(chars: dict[str, int], ids: list[str]) -> float | None:
-    from hfal.ask import model_id, provider
     from hfal.usage import price_for
     cfg = paths.settings()["model"]
     p = price_for(provider(cfg), model_id(cfg))
@@ -127,7 +127,6 @@ def estimate_usd(chars: dict[str, int], ids: list[str]) -> float | None:
 
 
 def expectations(run_id: str) -> dict:
-    from hfal.ask import model_id, provider
     cfg = paths.settings()
     return {"run_id": run_id, "provider": provider(cfg["model"]), "model": model_id(cfg["model"]),
             "prompt_version": cfg["prompt_version"], "effort": cfg["model"].get("effort"),
@@ -236,7 +235,7 @@ def main() -> None:
         plan_file = paths.RUNS / existing / "final_run.json"
         if not plan_file.exists():
             raise SystemExit(f"{plan_file} not found: was this run started by final_run.py?")
-        plan = json.loads(plan_file.read_text(encoding="utf-8"))
+        plan = read_json(plan_file)
         if plan["model_preset"] != args.model:
             raise SystemExit(f"{existing} was asked with --model {plan['model_preset']}; pass the same preset")
         run_id, ids, too_large, chars = existing, plan["hospitals"], plan["too_large"], plan["prompt_chars"]

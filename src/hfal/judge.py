@@ -19,15 +19,16 @@ Rules
   * Output: runs/RUN_ID/judge/HOSPITAL_ID.json and runs/RUN_ID/judge.csv (git-ignored). The terminal shows counts only.
 """
 
-import csv
-import json
 from collections import Counter
 
-from . import paths, usage
-from .ask import (TooLarge, _verify, call_model, reference_block, estimate_tokens, format_criterion, input_limit_tokens,
-                  load_documents, model_id, render_documents, _obj, PAGE)
+from . import hospitals, paths, usage
+from .ask import (TooLarge, check_size, format_criterion, load_documents, reference_block, render_documents,
+                  verify_item)
+from .files import EXCEL, read_csv, read_json, write_csv, write_json
+from .model import call_model, model_id
+from .runfiles import run_dir
+from .schema import PAGE, object_schema
 from .score import load_golden, load_run, score_run
-from .sources import load_table
 
 # Buckets, in the order PLAN.md uses them. What the judge can and cannot decide is deliberate: it cannot tell a
 # golden-label mistake from a site that changed since September 2025 (it has only today's documents), so both are
@@ -67,8 +68,8 @@ For EVERY disagreement listed, return one finding with:
 - source_doc: the document id the quote comes from (empty if no quote).
 - page: the page number shown in the [[page N]] markers (null if no quote)."""
 
-JUDGE_SCHEMA = _obj({
-    "findings": {"type": "array", "items": _obj({
+JUDGE_SCHEMA = object_schema({
+    "findings": {"type": "array", "items": object_schema({
         "criterion_id": {"type": "string"},
         "bucket": {"type": "string", "enum": list(BUCKETS)},
         "who_is_right": {"type": "string", "enum": WHO},
@@ -82,7 +83,7 @@ JUDGE_SCHEMA = _obj({
 CSV_FIELDS = ["hospital_id", "criterion_id", "golden", "model_answer", "bucket", "who_is_right", "explanation",
               "evidence_quote", "evidence_verified", "evidence_url", "evidence_page", "model_quote", "model_quote_verified",
               "model_reason", "human_bucket", "human_note"]
-HUMAN = ("human_bucket", "human_note")
+HUMAN = ("human_bucket", "human_note")      # the person's columns: kept whenever judge.csv is rewritten
 
 
 def judge_config() -> dict:
@@ -106,16 +107,44 @@ def build_judge_prompt(docs: list[dict], diffs: list[dict], criteria: dict[str, 
     return render_documents(docs) + "\n\nDisagreements to review (one finding each):\n\n" + "\n\n".join(items)
 
 
-def dev_hospitals() -> set[str]:
-    return {h["hospital_id"] for h in load_table() if h.get("set") == "dev"}
+def judge_system_prompt() -> str:
+    """The judge's instructions plus the checker's reading rules and reference material, so both read by the same rules."""
+    rules, reference = paths.reading_rules(), reference_block()
+    system = SYSTEM
+    if rules:
+        system += f"\n\nThe checker was given these rules for reading the documents; judge by them too:\n{rules}"
+    if reference:
+        system += f"\n\n{reference}"
+    return system
+
+
+def _finding_row(hid: str, d: dict, finding: dict | None, docs: list[dict], urls: dict[str, str]) -> dict:
+    """One judge.csv row: the disagreement, the judge's finding (if it gave one) and its verified evidence."""
+    quote = (finding or {}).get("evidence_quote", "")
+    ev = None            # the judge's quote, checked verbatim against the document it names (or any document)
+    if finding and quote.strip():
+        ev = verify_item({"quote": quote, "source_doc": finding["source_doc"], "page": finding["page"]}, docs)
+    verified = bool(ev and ev["quote_verified"])
+    return {
+        "hospital_id": hid, "criterion_id": d["criterion_id"], "golden": d["golden"],
+        "model_answer": d["model_answer"],
+        "bucket": finding["bucket"] if finding else "judge_gave_no_finding",
+        "who_is_right": finding["who_is_right"] if finding else "",
+        "explanation": finding["explanation"] if finding else "",
+        "evidence_quote": quote,
+        "evidence_verified": ev["quote_verified"] if ev else "",
+        "evidence_url": urls.get(ev["source_doc"], "") if verified else "",
+        "evidence_page": (ev.get("page") or "") if verified else "",
+        "model_quote": d["quote"], "model_quote_verified": d["quote_verified"], "model_reason": d["reason"],
+        "human_bucket": "", "human_note": "",
+    }
 
 
 def judge_hospital(hid: str, run_id: str, golden: dict, run: dict, criteria: dict[str, dict],
                    dry_run: bool = False) -> dict:
     """Judge one hospital's disagreements. Returns {"status": ..., ...}; writes runs/RUN_ID/judge/HID.json."""
-    run_dir = paths.RUNS / run_id
-    rec_file = run_dir / f"{hid}.json"
-    used = {d["sha8"] for d in json.loads(rec_file.read_text(encoding="utf-8")).get("documents", [])}
+    out_dir = run_dir(run_id)
+    used = {d["sha8"] for d in read_json(out_dir / f"{hid}.json").get("documents", [])}
     _, diffs = score_run({k: v for k, v in golden.items() if k[0] == hid}, {hid: run[hid]})
     diffs = [d for d in diffs if d["criterion_id"] in criteria]
     if not diffs:
@@ -123,91 +152,64 @@ def judge_hospital(hid: str, run_id: str, golden: dict, run: dict, criteria: dic
 
     docs = [d for d in load_documents(hid) if d["sha8"] in used]      # the documents the run actually saw
     cfg_all = paths.settings()
-    prompt = build_judge_prompt(docs, diffs, criteria)
-    rules = paths.reading_rules()
-    system = SYSTEM + (f"\n\nThe checker was given these rules for reading the documents; judge by them too:\n{rules}" if rules else "")
-    system += f"\n\n{reference_block()}" if reference_block() else ""
+    prompt, system = build_judge_prompt(docs, diffs, criteria), judge_system_prompt()
     chars = len(prompt) + len(system)
-    est, limit = estimate_tokens(chars, cfg_all), input_limit_tokens(cfg_all, "judge")
-    if est > limit:
-        raise TooLarge(hid, est, limit)
+    check_size(hid, chars, cfg_all, "judge")
     if dry_run:
         return {"status": "dry_run", "n": len(diffs), "approx_input_tokens": int(chars / 3.08)}
 
     raw, call = call_model(system, prompt, judge_config(), schema=JUDGE_SCHEMA,
                            tag={"purpose": "judge", "run_id": run_id, "hospital_id": hid})
-    by_id = {d["sha8"]: d for d in docs}
     urls = {d["sha8"]: d["source_url"] for d in docs}
     by_crit = {f["criterion_id"]: f for f in raw.get("findings", []) if f.get("criterion_id") in criteria}
-    rows = []
-    for d in diffs:
-        f = by_crit.get(d["criterion_id"])
-        quote = (f or {}).get("evidence_quote", "")
-        ev = None            # the judge's quote, checked verbatim against the document it names (or any document)
-        if f and quote.strip():
-            ev = _verify({"quote": quote, "source_doc": f["source_doc"], "page": f["page"]}, docs, by_id)
-        rows.append({
-            "hospital_id": hid, "criterion_id": d["criterion_id"], "golden": d["golden"],
-            "model_answer": d["model_answer"],
-            "bucket": f["bucket"] if f else "judge_gave_no_finding",
-            "who_is_right": f["who_is_right"] if f else "",
-            "explanation": f["explanation"] if f else "",
-            "evidence_quote": quote,
-            "evidence_verified": ev["quote_verified"] if ev else "",
-            "evidence_url": urls.get(ev["source_doc"], "") if ev and ev["quote_verified"] else "",
-            "evidence_page": (ev.get("page") or "") if ev and ev["quote_verified"] else "",
-            "model_quote": d["quote"], "model_quote_verified": d["quote_verified"], "model_reason": d["reason"],
-            "human_bucket": "", "human_note": "",
-        })
-    out = run_dir / "judge" / f"{hid}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"hospital_id": hid, "run_id": run_id, "judge_model": call.get("model"),
-                               "call": call, "rows": rows}, indent=2, ensure_ascii=False), encoding="utf-8")
+    rows = [_finding_row(hid, d, by_crit.get(d["criterion_id"]), docs, urls) for d in diffs]
+    write_json(out_dir / "judge" / f"{hid}.json",
+               {"hospital_id": hid, "run_id": run_id, "judge_model": call.get("model"), "call": call, "rows": rows},
+               ensure_ascii=False)
     return {"status": "judged", "n": len(diffs), "rows": rows, "call": call}
+
+
+def _judge_files(run_dir_):
+    judge_dir = run_dir_ / "judge"
+    return sorted(judge_dir.glob("*.json")) if judge_dir.is_dir() else []
 
 
 def write_judge_csv(run_id: str) -> int:
     """Collect runs/RUN_ID/judge/*.json into judge.csv, keeping any human_bucket / human_note already typed in."""
-    run_dir = paths.RUNS / run_id
-    csv_path = run_dir / "judge.csv"
+    out_dir = run_dir(run_id)
+    csv_path = out_dir / "judge.csv"
     kept = {}
     if csv_path.exists():
-        with open(csv_path, newline="", encoding="utf-8-sig") as f:
-            for r in csv.DictReader(f):
-                kept[(r["hospital_id"], r["criterion_id"])] = {k: r.get(k, "") for k in HUMAN}
+        for r in read_csv(csv_path):
+            kept[(r["hospital_id"], r["criterion_id"])] = {k: r.get(k, "") for k in HUMAN}
     rows = []
-    for p in sorted((run_dir / "judge").glob("*.json")) if (run_dir / "judge").is_dir() else []:
-        for r in json.loads(p.read_text(encoding="utf-8"))["rows"]:
+    for p in _judge_files(out_dir):
+        for r in read_json(p)["rows"]:
             r.update(kept.get((r["hospital_id"], r["criterion_id"]), {}))
             rows.append(r)
-    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:      # utf-8-sig: Excel shows accents right
-        w = csv.DictWriter(f, fieldnames=CSV_FIELDS, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+    write_csv(csv_path, rows, CSV_FIELDS, encoding=EXCEL)      # utf-8-sig: Excel shows accents right
     return len(rows)
 
 
-def check_same_judge(run_dir, judge_model: str) -> None:
+def check_same_judge(run_dir_, judge_model: str) -> None:
     """Stop before any call when the run was already judged by another model: its judge/ files and judge.csv would be
     overwritten by a mix of two judges. (One judge per run; compare judges on copies of a run.)"""
-    for p in sorted((run_dir / "judge").glob("*.json")) if (run_dir / "judge").is_dir() else []:
-        earlier = json.loads(p.read_text(encoding="utf-8")).get("judge_model") or ""
+    for p in _judge_files(run_dir_):
+        earlier = read_json(p).get("judge_model") or ""
         if earlier and earlier != judge_model:
-            raise SystemExit(f"{run_dir.name} was already judged by {earlier}; this judge is {judge_model}. "
-                             f"One judge per run: move {run_dir / 'judge'} and judge.csv aside first.")
+            raise SystemExit(f"{run_dir_.name} was already judged by {earlier}; this judge is {judge_model}. "
+                             f"One judge per run: move {run_dir_ / 'judge'} and judge.csv aside first.")
 
 
 def judge_run(run_id: str, only: set[str] | None = None, dry_run: bool = False) -> dict:
     """Judge every dev hospital in the run that has disagreements. Prints counts only."""
-    run_dir = paths.RUNS / run_id
-    if not run_dir.is_dir():
-        raise SystemExit(f"{run_dir} not found")
+    out_dir = run_dir(run_id, must_exist=True)
     if not dry_run:
-        check_same_judge(run_dir, model_id(judge_config()))
-    run = load_run(run_dir)
+        check_same_judge(out_dir, model_id(judge_config()))
+    run = load_run(out_dir)
     golden = load_golden(paths.GOLDEN / "golden.csv")
     criteria = {c["id"]: c for c in paths.criteria()}
-    dev = dev_hospitals()
+    dev = hospitals.dev_ids()
 
     summary = Counter()
     buckets = Counter()
@@ -235,9 +237,9 @@ def judge_run(run_id: str, only: set[str] | None = None, dry_run: bool = False) 
             buckets.update(x["bucket"] for x in r["rows"])
             print(f"{hid}  judged {r['n']} disagreement(s)  cached={r['call'].get('cached')}")
     if skipped and not dry_run:
-        (run_dir / "judge_skipped.json").write_text(json.dumps({"hospitals": skipped}, indent=2), encoding="utf-8")
+        write_json(out_dir / "judge_skipped.json", {"hospitals": skipped})
     if not dry_run:
-        print(f"wrote {write_judge_csv(run_id)} rows -> {run_dir / 'judge.csv'}")
+        print(f"wrote {write_judge_csv(run_id)} rows -> {out_dir / 'judge.csv'}")
         usage.write_run_usage(run_id, "judge", totals)
         print("\n".join(totals.lines("judge usage")))
     return {"summary": dict(summary), "buckets": dict(buckets)}

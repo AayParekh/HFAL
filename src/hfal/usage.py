@@ -2,7 +2,7 @@
 
 Two records, both git-ignored (under runs/):
   runs/usage.csv           the ledger. One row for every call that reached the model provider (so it was billed),
-                           appended by ask.call_model at the moment the reply arrives. A call answered from the
+                           appended by model.call_model at the moment the reply arrives. A call answered from the
                            response cache is not a row, because it cost nothing this time. A call that failed after
                            the provider replied (refused, cut off at max_output_tokens, reply not valid JSON) IS a row:
                            it was billed and produced no answer. `hfal usage` adds the ledger up.
@@ -13,7 +13,7 @@ Cost = tokens x the price per million tokens in settings.yaml `prices`, at the p
 tokens counted and its cost left blank, never guessed. Output tokens are the count the provider reports, which
 includes the model's thinking.
 
-Prompt caching (Nov 12, ask.prompt_cache): input_tokens is the whole prompt; cache_read_tokens and
+Prompt caching (Nov 12, model.prompt_cache): input_tokens is the whole prompt; cache_read_tokens and
 cache_write_tokens are the parts of it read from or written to the provider's prompt cache, priced at the model's
 `cache_read` and `cache_write` prices. A call with cache tokens but no cache price for its model has its cost left
 blank. Rows written before Nov 12 have no cache columns (blank): their cost is as it was logged.
@@ -23,12 +23,12 @@ OCR (src/hfal/ocr.py) is in the same ledger: one row per page sent to Amazon Tex
 """
 
 import csv
-import json
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 
 from . import paths
+from .files import read_csv, read_csv_rows, read_json_or_none, write_csv, write_json
 
 LEDGER_FIELDS = ["time_utc", "purpose", "run_id", "hospital_id", "provider", "model", "effort",
                  "input_tokens", "output_tokens", "cost_usd", "status", "cache_read_tokens", "cache_write_tokens"]
@@ -43,18 +43,11 @@ def upgrade_ledger(path) -> None:
     appended rows line up. Nothing else changes. Written to a temporary file first, then swapped in."""
     if not path.exists():
         return
-    with open(path, newline="", encoding="utf-8") as f:
-        header = next(csv.reader(f), [])
+    header = next(iter(read_csv_rows(path, "utf-8")), [])
     if header == LEDGER_FIELDS:
         return
-    with open(path, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    tmp = path.with_suffix(".csv.tmp")
-    with open(tmp, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=LEDGER_FIELDS, lineterminator="\n")
-        w.writeheader()
-        w.writerows({k: r.get(k, "") or "" for k in LEDGER_FIELDS} for r in rows)
-    tmp.replace(path)
+    rows = read_csv(path, "utf-8")
+    write_csv(path, ({k: r.get(k, "") or "" for k in LEDGER_FIELDS} for r in rows), LEDGER_FIELDS, atomic=True)
 
 
 def _int(v) -> int:
@@ -86,6 +79,19 @@ def cost_usd(info: dict, prices: dict | None = None) -> float | None:
             + _int(info.get("output_tokens")) * p["output"]) / 1_000_000
 
 
+def _ledger_row(info: dict, status: str, tag: dict, cost: float | None) -> dict:
+    return {
+        "time_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "purpose": tag.get("purpose", ""), "run_id": tag.get("run_id", ""),
+        "hospital_id": tag.get("hospital_id", ""), "provider": info.get("provider", ""),
+        "model": info.get("model", ""), "effort": info.get("effort") or "",
+        "input_tokens": info.get("input_tokens", 0), "output_tokens": info.get("output_tokens", 0),
+        "cost_usd": "" if cost is None else f"{cost:.6f}", "status": status,
+        "cache_read_tokens": info.get("cache_read_tokens", 0) or 0,
+        "cache_write_tokens": info.get("cache_write_tokens", 0) or 0,
+    }
+
+
 def log_call(info: dict, status: str = "ok", tag: dict | None = None) -> None:
     """Append one billed call to the ledger. Never stops a run: a failure to write is reported and the run goes on."""
     tag = tag or {}
@@ -100,16 +106,7 @@ def log_call(info: dict, status: str = "ok", tag: dict | None = None) -> None:
             w = csv.DictWriter(f, fieldnames=LEDGER_FIELDS, lineterminator="\n")
             if new:
                 w.writeheader()
-            w.writerow({
-                "time_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "purpose": tag.get("purpose", ""), "run_id": tag.get("run_id", ""),
-                "hospital_id": tag.get("hospital_id", ""), "provider": info.get("provider", ""),
-                "model": info.get("model", ""), "effort": info.get("effort") or "",
-                "input_tokens": info.get("input_tokens", 0), "output_tokens": info.get("output_tokens", 0),
-                "cost_usd": "" if cost is None else f"{cost:.6f}", "status": status,
-                "cache_read_tokens": info.get("cache_read_tokens", 0) or 0,
-                "cache_write_tokens": info.get("cache_write_tokens", 0) or 0,
-            })
+            w.writerow(_ledger_row(info, status, tag, cost))
     except OSError as e:
         print(f"warning: could not write the usage ledger ({e}); this call's tokens are not recorded there",
               file=sys.stderr)
@@ -173,18 +170,15 @@ def write_run_usage(run_id: str, section: str, totals: Totals) -> None:
     """Merge this section ('ask' or 'judge') into runs/RUN_ID/usage.json. A second `ask` into the same run id
     replaces the first one's totals; the ledger keeps every call."""
     f = paths.RUNS / run_id / "usage.json"
-    f.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    data = read_json_or_none(f) if f.exists() else None
+    data = data or {}
     data[section] = totals.as_dict()
-    f.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_json(f, data)
 
 
 def read_ledger() -> list[dict]:
     path = ledger_path()
-    if not path.exists():
-        return []
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+    return read_csv(path, "utf-8") if path.exists() else []
 
 
 def aggregate(rows: list[dict], by: str = "purpose") -> list[dict]:
@@ -198,8 +192,8 @@ def aggregate(rows: list[dict], by: str = "purpose") -> list[dict]:
     for r in rows:
         g = groups[key(r)]
         g["calls"] += 1
-        g["input_tokens"] += int(r["input_tokens"] or 0)
-        g["output_tokens"] += int(r["output_tokens"] or 0)
+        g["input_tokens"] += _int(r["input_tokens"])
+        g["output_tokens"] += _int(r["output_tokens"])
         g["cache_read_tokens"] += _int(r.get("cache_read_tokens"))
         if r["cost_usd"] == "":
             g["unpriced_calls"] += 1

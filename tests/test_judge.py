@@ -1,9 +1,8 @@
 import csv
 import json
 
-import pytest
 
-from hfal import ask, judge, paths
+from hfal import judge, paths
 
 DOC = ("Financial assistance is available to patients up to 400% FPL. Call 555-0100 for help with the application. "
        "This policy is available in Spanish.")

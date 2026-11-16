@@ -127,22 +127,26 @@ def direct_cells(row):
     return [child for child in row.children if isinstance(child, Node) and child.tag == "td"]
 
 
+def hospital_pfi(cell):
+    """The PFI a summary-table cell links to (its '#h<pfi>' anchor), or None for a header or other row."""
+    hospital_link = next(
+        (
+            anchor for anchor in descendants(cell, "a")
+            if re.fullmatch(r"#h\d+", anchor.attrs.get("href", ""))
+        ),
+        None,
+    )
+    return None if hospital_link is None else hospital_link.attrs["href"][2:]
+
+
 def report_locations(root):
+    """pfi -> city, from the summary table's hospital column."""
     locations = {}
     for row in descendants(root, "tr"):
         cells = direct_cells(row)
-        if not cells:
+        pfi = hospital_pfi(cells[0]) if cells else None
+        if pfi is None:
             continue
-        hospital_link = next(
-            (
-                anchor for anchor in descendants(cells[0], "a")
-                if re.fullmatch(r"#h\d+", anchor.attrs.get("href", ""))
-            ),
-            None,
-        )
-        if hospital_link is None:
-            continue
-        pfi = hospital_link.attrs["href"][2:]
         city_node = next(
             (
                 node for node in descendants(cells[0], "div")
@@ -173,19 +177,11 @@ def report_languages(root):
         language_index = header.index("languages")
         for row in rows:
             cells = direct_cells(row)
-            if len(cells) <= language_index:
-                continue
-            hospital_link = next(
-                (
-                    anchor for anchor in descendants(cells[0], "a")
-                    if re.fullmatch(r"#h\d+", anchor.attrs.get("href", ""))
-                ),
-                None,
-            )
-            if hospital_link is None:
+            pfi = hospital_pfi(cells[0]) if len(cells) > language_index else None
+            if pfi is None:
                 continue
             names = [name.strip() for name in text(cells[language_index]).split(";") if name.strip()]
-            languages[hospital_link.attrs["href"][2:]] = [
+            languages[pfi] = [
                 {"doc_type": "application", "language_code": name}
                 for name in names
             ]

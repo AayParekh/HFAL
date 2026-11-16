@@ -127,10 +127,10 @@ def test_ask_applies_the_points(tmp_path, monkeypatch):
 
 
 def test_summary_counts_points_and_skips_eval(tmp_path, monkeypatch):
-    from hfal import judge
+    from hfal import hospitals
     monkeypatch.setattr(paths, "RUNS", tmp_path / "runs")
     monkeypatch.setattr(paths, "GOLDEN", tmp_path / "golden")
-    monkeypatch.setattr(judge, "dev_hospitals", lambda: {"d1", "d2"})
+    monkeypatch.setattr(hospitals, "dev_ids", lambda: {"d1", "d2"})
     (tmp_path / "golden").mkdir()
     (tmp_path / "golden" / "golden.csv").write_text(
         "hospital_id,criterion_id,label\n"

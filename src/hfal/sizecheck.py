@@ -26,35 +26,31 @@ hospitals is marked: its rates are too noisy to read.
 """
 
 import csv
-import json
 from collections import Counter
 
-from . import paths
-from .judge import dev_hospitals
+from . import hospitals, paths
+from .runfiles import hospital_records, run_dir
 from .score import load_golden, load_run, score_run
-from .stats import cluster_ci  # noqa: F401  (also reachable as sizecheck.cluster_ci)
+from .stats import cluster_ci
 
 DEFAULT_BIG_TOKENS = 150_000
 MIN_HOSPITALS = 10
+CHARS_PER_TOKEN = 4         # the rough estimate `ask --dry-run` also uses for the token axis of this check
 
 
 def prompt_sizes(run_id: str, only: set[str]) -> dict[str, int]:
     """{hospital_id: prompt_chars} for the hospitals in `only` that had a model call in this run."""
-    out = {}
-    for p in sorted((paths.RUNS / run_id).glob("*.json")):
-        d = json.loads(p.read_text(encoding="utf-8"))
-        if "answers" in d and d.get("hospital_id") in only and d.get("prompt_chars", 0) > 0:
-            out[d["hospital_id"]] = d["prompt_chars"]
-    return out
+    return {hid: d["prompt_chars"] for hid, d in hospital_records(run_id)
+            if hid in only and d.get("prompt_chars", 0) > 0}
 
 
 def make_groups(sizes: dict[str, int], big_tokens: int = DEFAULT_BIG_TOKENS) -> list[tuple[str, list[str]]]:
     """[(group name, hospital ids)]: three equal thirds of the hospitals at or under big_tokens, then the big ones."""
-    small = sorted((h for h, c in sizes.items() if c // 4 <= big_tokens), key=lambda h: (sizes[h], h))
-    big = sorted((h for h, c in sizes.items() if c // 4 > big_tokens), key=lambda h: (sizes[h], h))
+    small = sorted((h for h, c in sizes.items() if c // CHARS_PER_TOKEN <= big_tokens), key=lambda h: (sizes[h], h))
+    big = sorted((h for h, c in sizes.items() if c // CHARS_PER_TOKEN > big_tokens), key=lambda h: (sizes[h], h))
     n = len(small)
     thirds = [[h for i, h in enumerate(small) if i * 3 // n == k] for k in range(3)] if n else [[], [], []]
-    groups = [(name, ids) for name, ids in zip(["smallest third", "middle third", "largest third"], thirds)]
+    groups = list(zip(["smallest third", "middle third", "largest third"], thirds))
     groups.append((f"above {big_tokens:,} tokens", big))
     return groups
 
@@ -70,50 +66,53 @@ def tally(ids: list[str], golden: dict, run: dict) -> dict[str, Counter]:
     return out
 
 
+def errors(c: Counter) -> int:
+    return c["false_yes"] + c["false_no"]
+
+
+def _same_kind(run_ids: list[str]) -> None:
+    """Stop when runs to be pooled were asked with different models, prompt versions or efforts."""
+    kinds = {(d.get("model"), d.get("prompt_version"), (d.get("call") or {}).get("effort"))
+             for r in run_ids for _, d in hospital_records(r)}
+    if len(kinds) > 1:
+        raise SystemExit(f"these runs mix models, prompt versions or efforts ({sorted(map(str, kinds))}); "
+                         "pool only runs asked the same way")
+
+
+def _group(name: str, ids: list[str], sizes: dict[str, int], golden: dict, run: dict) -> dict:
+    """The aggregates for one group of hospitals."""
+    per = tally(ids, golden, run) if ids else {}
+    total = Counter()
+    for c in per.values():
+        total.update(c)
+    by_hospital = []
+    for h in ids:
+        hc = Counter()
+        for c in tally([h], golden, run).values():
+            hc.update(c)
+        by_hospital.append((errors(hc), hc["n"]))
+    toks = sorted(sizes[h] // CHARS_PER_TOKEN for h in ids)
+    return {"name": name, "hospitals": len(ids), "tokens_min": toks[0] if toks else None,
+            "tokens_median": toks[len(toks) // 2] if toks else None, "tokens_max": toks[-1] if toks else None,
+            "total": total, "per_criterion": per, "ci": cluster_ci(by_hospital)}
+
+
 def build(run_ids: str | list[str], big_tokens: int = DEFAULT_BIG_TOKENS) -> dict:
     """One run, or several pooled (e.g. two samples of 10 asked with the same prompt). A hospital in more than one
     run counts once, from the newest run (run ids start with a timestamp), as in `hfal report`."""
     run_ids = [run_ids] if isinstance(run_ids, str) else sorted(run_ids)
-    dev = dev_hospitals()
+    dev = hospitals.dev_ids()
     run, sizes = {}, {}
     for run_id in run_ids:
-        run_dir = paths.RUNS / run_id
-        if not run_dir.is_dir():
-            raise SystemExit(f"{run_dir} not found")
-        run.update(load_run(run_dir))
+        run.update(load_run(run_dir(run_id, must_exist=True)))
         sizes.update(prompt_sizes(run_id, dev))
     if len(run_ids) > 1:
-        kinds = {(d.get("model"), d.get("prompt_version"), (d.get("call") or {}).get("effort")) for r in run_ids
-                 for d in (json.loads(p.read_text(encoding="utf-8")) for p in (paths.RUNS / r).glob("*.json"))
-                 if "answers" in d and "hospital_id" in d}  # final_check.json also has "answers"
-        if len(kinds) > 1:
-            raise SystemExit(f"these runs mix models, prompt versions or efforts ({sorted(map(str, kinds))}); "
-                             "pool only runs asked the same way")
-    skipped_eval = sum(1 for h in run if h not in dev)
+        _same_kind(run_ids)
     golden = load_golden(paths.GOLDEN / "golden.csv")
-    groups = []
-    for name, ids in make_groups(sizes, big_tokens):
-        per = tally(ids, golden, run) if ids else {}
-        total = Counter()
-        for c in per.values():
-            total.update(c)
-        by_hospital = []
-        for h in ids:
-            hc = Counter()
-            for c in tally([h], golden, run).values():
-                hc.update(c)
-            by_hospital.append((errors(hc), hc["n"]))
-        toks = sorted(sizes[h] // 4 for h in ids)
-        groups.append({"name": name, "hospitals": len(ids), "tokens_min": toks[0] if toks else None,
-                       "tokens_median": toks[len(toks) // 2] if toks else None, "tokens_max": toks[-1] if toks else None,
-                       "total": total, "per_criterion": per,
-                       "ci": cluster_ci(by_hospital)})
-    return {"run_id": run_ids[-1], "runs": run_ids, "groups": groups, "skipped_eval": skipped_eval,
+    groups = [_group(name, ids, sizes, golden, run) for name, ids in make_groups(sizes, big_tokens)]
+    return {"run_id": run_ids[-1], "runs": run_ids, "groups": groups,
+            "skipped_eval": sum(1 for h in run if h not in dev),
             "no_prompt": sum(1 for h in run if h in dev and h not in sizes), "big_tokens": big_tokens}
-
-
-def errors(c: Counter) -> int:
-    return c["false_yes"] + c["false_no"]
 
 
 def lines(result: dict) -> list[str]:

@@ -25,24 +25,26 @@ to data/review/representativeness.csv (git-ignored).
 """
 
 import argparse
-import csv
-import json
 import random
 import statistics
 import sys
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from hfal import paths
+from hfal.files import read_csv, read_csv_rows, write_csv
+from hfal.runfiles import hospital_records
+
+ROOT = paths.ROOT
 DEFAULT_FINAL_RUN = "20261113T045436Z_openweight_us-moonshotai-kimi-k3_v7"
 SEED = 20261113
 POINTS = {"A": 4, "B": 3, "C": 2, "D": 1, "F": 0}
 LETTERS = ["A", "B", "C", "D", "F"]
+GRADE_POINTS = "CSSNY grade points (A=4, F=0)"
 
 
-def read_csv(path: Path) -> list[dict]:
-    with open(path, newline="", encoding="utf-8-sig") as f:  # the review sheets were saved by Numbers with a BOM
-        return list(csv.DictReader(f))
+def _review(name: str) -> Path:
+    return ROOT / "data" / "review" / name
 
 
 def row_check(final_run: str, rng: random.Random, resamples: int) -> list[str]:
@@ -55,7 +57,7 @@ def row_check(final_run: str, rng: random.Random, resamples: int) -> list[str]:
     diff = [r for r in read_csv(ROOT / "runs" / final_run / "diff.csv")
             if r["golden"] in ("YES", "NO") and r["effective"] in ("YES", "NO") and r["golden"] != r["effective"]]
     keys = {(r["hospital_id"], r["criterion_id"]) for r in diff}
-    sample = read_csv(ROOT / "data/review/final40_sample_review.csv")
+    sample = read_csv(_review("final40_sample_review.csv"))
     in_pool = [r for r in sample if (r["hospital_id"], r["criterion_id"]) in keys]
     pool_by_dir = {d: [r["criterion_id"] for r in diff if r["effective"] == d] for d in ("YES", "NO")}
     n_dir = Counter(r["model_answer"] for r in sample)
@@ -88,8 +90,7 @@ def row_check(final_run: str, rng: random.Random, resamples: int) -> list[str]:
 
 def nyc_flags(path: Path) -> dict[str, float]:
     """{hospital_id: 1.0 if the sheet's NYC? column says nyc else 0.0} from the two-header-row raw sheet."""
-    with open(path, newline="", encoding="utf-8") as f:
-        rows = list(csv.reader(f))
+    rows = read_csv_rows(path, "utf-8")
     header = rows[1]
     i_id, i_nyc = header.index("Permanent Facility Identifier (PFI)"), header.index("NYC?")
     return {r[i_id].strip(): float(r[i_nyc].strip().lower() == "nyc") for r in rows[2:] if len(r) > i_id and r[i_id].strip()}
@@ -113,7 +114,7 @@ def features() -> dict[str, dict[str, float]]:
         out[h] = {
             "NYC": nyc[h],
             "in a system of 2+ hospitals": float(system_size[r["system"].strip()] >= 2),
-            "CSSNY grade points (A=4, F=0)": float(POINTS[g["letter"]]),
+            GRADE_POINTS: float(POINTS[g["letter"]]),
             "CSSNY letter A or B": float(g["letter"] in ("A", "B")),
             "CSSNY automatic fail": float(g["auto_fail"].strip().upper() == "TRUE"),
             "CSSNY noncompliant count": float(g["noncompliant_count"]),
@@ -122,17 +123,17 @@ def features() -> dict[str, dict[str, float]]:
     return out
 
 
+def _ids_from_lines(path: Path) -> set[str]:
+    return {ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")}
+
+
 def groups(final_run: str) -> dict[str, set[str]]:
     pilot = set()
     for p in sorted((ROOT / "data/review").glob("pilot_ids*.txt")):
-        pilot |= {l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")}
-    random40 = set()
-    for p in (ROOT / "runs" / final_run).glob("*.json"):
-        d = json.loads(p.read_text(encoding="utf-8"))
-        if "answers" in d and "hospital_id" in d:
-            random40.add(d["hospital_id"])
-    sample40 = {r["hospital_id"] for r in read_csv(ROOT / "data/review/final40_sample_review.csv")}
-    not_found = {h for r in read_csv(ROOT / "data/review/not_found_review.csv") if r["human_finding"].strip()
+        pilot |= _ids_from_lines(p)
+    random40 = {hid for hid, _ in hospital_records(ROOT / "runs" / final_run)}
+    sample40 = {r["hospital_id"] for r in read_csv(_review("final40_sample_review.csv"))}
+    not_found = {h for r in read_csv(_review("not_found_review.csv")) if r["human_finding"].strip()
                  for h in r["hospital_ids"].split()}
     reviewed = pilot | sample40 | not_found
     working = read_csv(ROOT / "data/working_set.csv")
@@ -148,6 +149,7 @@ def groups(final_run: str) -> dict[str, set[str]]:
 
 
 def compare(a: list[float], b: list[float], rng: random.Random, resamples: int) -> dict:
+    """Group a against group b: means, difference with a bootstrap interval, standardized difference, permutation p."""
     diff = statistics.fmean(a) - statistics.fmean(b)
     boot = sorted(statistics.fmean(rng.choices(a, k=len(a))) - statistics.fmean(rng.choices(b, k=len(b)))
                   for _ in range(resamples))
@@ -162,6 +164,11 @@ def compare(a: list[float], b: list[float], rng: random.Random, resamples: int) 
         "lo": boot[int(0.025 * resamples)], "hi": boot[int(0.975 * resamples) - 1],
         "smd": diff / pooled_sd if pooled_sd else 0.0, "p": (extreme + 1) / (resamples + 1),
     }
+
+
+def _letter_shares(feats: dict, ids: set[str]) -> str:
+    counts = Counter(feats[h][GRADE_POINTS] for h in ids)
+    return "  ".join(f"{L} {100 * counts[float(POINTS[L])] / len(ids):4.0f}%" for L in LETTERS)
 
 
 def main() -> int:
@@ -185,25 +192,19 @@ def main() -> int:
         print(f"== {gname} vs other {len(rest)}")
         print(f"  {'feature':38} {'group':>7} {'others':>7} {'diff (95% interval)':>26} {'SMD':>6} {'p':>6}")
         for f in names:
-            a = [feats[h][f] for h in sorted(ids) if feats[h][f] == feats[h][f]]
+            a = [feats[h][f] for h in sorted(ids) if feats[h][f] == feats[h][f]]      # == drops NaN
             b = [feats[h][f] for h in sorted(rest) if feats[h][f] == feats[h][f]]
             c = compare(a, b, rng, args.resamples)
             print(f"  {f:38} {c['group_mean']:7.2f} {c['rest_mean']:7.2f} "
                   f"{c['diff']:+8.2f} ({c['lo']:+6.2f} to {c['hi']:+6.2f}) {c['smd']:+6.2f} {c['p']:6.3f}")
             rows.append({"group": gname, "group_n": len(a), "others_n": len(b), "feature": f,
                          **{k: round(v, 4) for k, v in c.items()}})
-        counts_g = Counter(feats[h]["CSSNY grade points (A=4, F=0)"] for h in ids)
-        counts_r = Counter(feats[h]["CSSNY grade points (A=4, F=0)"] for h in rest)
-        fmt = lambda c, n: "  ".join(f"{L} {100 * c[float(POINTS[L])] / n:4.0f}%" for L in LETTERS)
-        print(f"  CSSNY letters, group : {fmt(counts_g, len(ids))}")
-        print(f"  CSSNY letters, others: {fmt(counts_r, len(rest))}\n")
+        print(f"  CSSNY letters, group : {_letter_shares(feats, ids)}")
+        print(f"  CSSNY letters, others: {_letter_shares(feats, rest)}\n")
 
     print("\n".join(row_check(args.final_run, rng, args.resamples)) + "\n")
-    out = ROOT / "data/review/representativeness.csv"
-    with open(out, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+    out = _review("representativeness.csv")
+    write_csv(out, rows, list(rows[0]))
     print(f"aggregates -> {out.relative_to(ROOT)}")
     return 0
 

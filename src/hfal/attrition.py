@@ -2,9 +2,9 @@
 (is a working hospital still evaluable this month?). Policy and stages: scripts/attrition.py and PLAN.md "Scope rules".
 """
 
-import json
-
 from . import paths
+from .files import read_json
+from .manifest import full_manifest  # noqa: F401  (re-exported: the attrition script and tests read it from here)
 from .sources import LANDING_LABEL
 
 STAGES = ["in hospital table", "has landing_url", "landing page fetched", "documents found",
@@ -23,6 +23,7 @@ CATEGORY_TEXT = {
     "incomplete": "open items: letter provisional or missing (needs review)",
 }
 PRIORITY = ["robots_txt", "bot_check", "broken_or_empty"]   # when several things went wrong, report the first
+DOC_KINDS = ("pdf", "docx")
 
 
 def failure_category(status: str) -> str | None:
@@ -47,8 +48,9 @@ def required_documents(disc: dict) -> list[str]:
     Its selected PDF and Word documents; when discovery selected none, its selected web pages (since Nov 14,
     owner: a hospital that posts its policy only as web pages counts. Dev evidence: 135 of 1,030 verified YES/NO
     answers in the v7 dev runs quote a web page). The landing page alone is never enough."""
-    docs = [c["url"] for c in disc["candidates"] if c["selected"] and c["kind"] in ("pdf", "docx")]
-    return docs or [c["url"] for c in disc["candidates"] if c["selected"] and c["kind"] == "html"]
+    selected = [c for c in disc["candidates"] if c["selected"]]
+    docs = [c["url"] for c in selected if c["kind"] in DOC_KINDS]
+    return docs or [c["url"] for c in selected if c["kind"] == "html"]
 
 
 def classify(h: dict, entries: list[dict], disc: dict | None, ocr: dict[str, bool],
@@ -108,17 +110,11 @@ def browser_used(entries: list[dict], disc: dict | None) -> bool:
             or bool(((disc or {}).get("browser") or {}).get("used")))
 
 
-def full_manifest(hid: str) -> list[dict]:
-    """The hospital's latest manifest, every entry whatever its status."""
-    manifests = sorted((paths.RAW / hid).glob("*/manifest.json"))
-    return json.loads(manifests[-1].read_text(encoding="utf-8")) if manifests else []
-
-
 def ocr_flags(hid: str, entries: list[dict]) -> dict[str, bool]:
     """sha8 -> needs_ocr, for the downloaded entries that have been extracted."""
     ocr = {}
     for e in entries:
         tf = paths.TEXT / hid / f"{e.get('sha8', '')}.json"
         if e.get("status") == "ok" and e.get("sha8") and tf.exists():
-            ocr[e["sha8"]] = bool(json.loads(tf.read_text(encoding="utf-8"))["needs_ocr"])
+            ocr[e["sha8"]] = bool(read_json(tf)["needs_ocr"])
     return ocr

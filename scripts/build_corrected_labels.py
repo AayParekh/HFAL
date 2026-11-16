@@ -9,23 +9,15 @@ judge.csv files are never changed. Keep every review sheet you bucket (one per b
 Prints counts only.
 """
 import argparse
-import csv
 import sys
 from collections import Counter
 from pathlib import Path
 
-from hfal import corrected, paths
-from hfal.score import hospital_sets, load_golden
+from hfal import corrected, hospitals, paths
+from hfal.files import read_sheet
+from hfal.score import load_golden
 
 DEFAULT_SHEET = paths.DATA / "review" / "judge_review.csv"
-
-
-def read_sheet(path: Path) -> list[dict]:
-    try:
-        with open(path, newline="", encoding="utf-8-sig") as f:
-            return list(csv.DictReader(f))
-    except UnicodeDecodeError:
-        sys.exit(f"{path} is not UTF-8. In Excel, save it as 'CSV UTF-8 (Comma delimited)'.")
 
 
 def main() -> None:
@@ -39,8 +31,7 @@ def main() -> None:
         if not s.exists():
             sys.exit(f"{s} not found")
     golden = load_golden(paths.GOLDEN / "golden.csv")
-    dev = {h for h, s in hospital_sets().items() if s == "dev"}
-    rows, problems = corrected.build([(s.name, read_sheet(s)) for s in sheets], golden, dev)
+    rows, problems = corrected.build([(s.name, read_sheet(s)) for s in sheets], golden, hospitals.dev_ids())
     if problems:
         for msg, n in Counter(problems).items():
             print(f"  {n} x {msg}")

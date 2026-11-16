@@ -15,10 +15,10 @@ Only dev hospitals can carry corrections (the judge refuses eval hospitals; eval
 Corrections cover only the disagreements a person reviewed; rows where the model and CSSNY agreed were not checked,
 so the corrected score can only move up from the sheet score. Say so wherever it is reported.
 """
-import csv
 from pathlib import Path
 
 from . import paths
+from .files import EXCEL, read_csv, write_csv
 from .grade import grade_hospital
 from .schema import NO, YES
 
@@ -31,8 +31,19 @@ FIELDS = ["hospital_id", "criterion_id", "cssny_label", "corrected_label", "acti
 
 
 def norm_bucket(s: str) -> str:
-    """Same normalisation as doccheck: spaces, hyphens and capitals ignored."""
+    """A bucket name as typed by a person, made comparable: spaces, hyphens and capitals ignored."""
     return (s or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _action(bucket: str, gold: str, judged: str) -> tuple[str, str] | None:
+    """(action, corrected label) for a bucket, or None for a bucket we do not know."""
+    if bucket in MODEL_RIGHT:
+        return ("replace", judged) if judged in (YES, NO) else ("exclude", "")
+    if bucket in GOLDEN_STANDS:
+        return "keep", gold
+    if bucket in EXCLUDE:
+        return "exclude", ""
+    return None
 
 
 def build(sheets: list[tuple[str, list[dict]]], golden: dict, dev_ids: set[str]) -> tuple[list[dict], list[str]]:
@@ -57,15 +68,11 @@ def build(sheets: list[tuple[str, list[dict]]], golden: dict, dev_ids: set[str])
                 problems.append(f"{name}: a row's golden label differs from golden.csv (sheet out of date?)")
                 continue
             judged = (r.get("model_answer") or "").strip().upper()
-            if bucket in MODEL_RIGHT:
-                action, label = ("replace", judged) if judged in (YES, NO) else ("exclude", "")
-            elif bucket in GOLDEN_STANDS:
-                action, label = "keep", gold
-            elif bucket in EXCLUDE:
-                action, label = "exclude", ""
-            else:
+            decided = _action(bucket, gold, judged)
+            if decided is None:
                 problems.append(f"{name}: unknown human_bucket {bucket!r}")
                 continue
+            action, label = decided
             row = {"hospital_id": key[0], "criterion_id": key[1], "cssny_label": gold, "corrected_label": label,
                    "action": action, "human_bucket": bucket, "human_note": (r.get("human_note") or "").strip(),
                    "judged_answer": judged, "judged_in_run": (r.get("run_id") or "").strip(), "source_sheet": name}
@@ -78,19 +85,14 @@ def build(sheets: list[tuple[str, list[dict]]], golden: dict, dev_ids: set[str])
 
 
 def write(rows: list[dict], path: Path = FILE) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=FIELDS, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+    write_csv(path, rows, FIELDS, encoding=EXCEL)
 
 
 def load(path: Path = FILE) -> dict[tuple[str, str], dict] | None:
     """(hospital_id, criterion_id) -> correction row; None when the file is not there."""
     if not path.exists():
         return None
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        return {(r["hospital_id"], r["criterion_id"]): r for r in csv.DictReader(f)}
+    return {(r["hospital_id"], r["criterion_id"]): r for r in read_csv(path)}
 
 
 def apply(golden: dict, corrections: dict) -> dict:
