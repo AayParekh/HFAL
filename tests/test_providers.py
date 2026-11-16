@@ -443,6 +443,27 @@ def test_openweight_ping(monkeypatch, tmp_path):
     assert "response_format" not in fake.calls[0] and fake.calls[0]["messages"][0]["role"] == "user"
 
 
+def test_plain_answer_sends_only_the_question(monkeypatch, tmp_path):
+    """The README comparison: no system prompt, no reply format, no tools, no cache options; the call is billed in the
+    ledger under its purpose."""
+    monkeypatch.setattr(paths, "RUNS", tmp_path)
+    fake = use(monkeypatch, FakeInvoke(text="I do not know."))
+    r = model.plain_answer(OPENWEIGHT, "Does Example Hospital set a time limit?", "readme_baseline")
+    kw = fake.calls[0]
+    assert kw["messages"] == [{"role": "user", "content": "Does Example Hospital set a time limit?"}]
+    assert "response_format" not in kw and "tools" not in kw and "prompt_cache_options" not in kw
+    assert kw["reasoning_effort"] == "high"                       # the pipeline's own effort
+    assert r["answer"] == "I do not know." and r["model_id"] == "us.vendor.test-model"
+    assert "readme_baseline" in (tmp_path / "usage.csv").read_text(encoding="utf-8")
+
+
+def test_plain_answer_cut_off_is_an_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(paths, "RUNS", tmp_path)
+    use(monkeypatch, FakeInvoke(stop="length"))
+    with pytest.raises(model.ModelFailed, match="cut off"):
+        model.plain_answer(OPENWEIGHT, "q", "readme_baseline")
+
+
 def test_openweight_needs_a_region_and_a_bedrock_id():
     with pytest.raises(ValueError, match="aws_region"):
         model.make_client({**OPENWEIGHT, "aws_region": ""})

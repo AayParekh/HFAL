@@ -394,6 +394,32 @@ def _call_once(system: str, user: str, cfg: dict, schema: dict, tag: dict | None
     return result, {**info, "cached": False}
 
 
+def plain_answer(cfg: dict, question: str, purpose: str) -> dict:
+    """The model's own answer to a question: no system prompt, no tools, no documents, no reply format. This is the
+    comparison for the README's sample questions (what the model knows without the pipeline). The model's effort is
+    the one in cfg, so the only difference from the pipeline is what it is given. One billed call, logged in the usage
+    ledger under `purpose`; not cached, so asking twice is billed twice (and may answer differently)."""
+    if provider(cfg) == "openweight":
+        resp = _invoke_openweight(make_client(cfg), cfg, None, question, cfg["max_output_tokens"],
+                                  effort=cfg.get("effort"))
+    else:
+        extra = {"output_config": {"effort": cfg["effort"]}} if cfg.get("effort") else {}
+        resp = _create(make_client(cfg), cfg, stream=True, max_tokens=cfg["max_output_tokens"], **extra,
+                       messages=[{"role": "user", "content": question}])
+    text = "".join(getattr(b, "text", "") for b in resp.content).strip()
+    info = {"provider": provider(cfg), "model": model_id(cfg), "effort": cfg.get("effort"),
+            **token_counts(provider(cfg), resp.usage)}
+    usage.log_call(info, "ok" if resp.stop_reason in ("end_turn", "stop_sequence") else resp.stop_reason,
+                   {"purpose": purpose})      # billed either way
+    if resp.stop_reason == "max_tokens":
+        raise ModelFailed(f"the answer was cut off at max_output_tokens ({cfg['max_output_tokens']}); raise it")
+    if resp.stop_reason == "refusal":
+        raise ModelFailed("the model declined this question")
+    return {"provider": info["provider"], "model_id": info["model"], "effort": info["effort"], "question": question,
+            "answer": text, "stop_reason": resp.stop_reason, "input_tokens": info["input_tokens"],
+            "output_tokens": info["output_tokens"]}
+
+
 def ping(cfg: dict) -> dict:
     """A tiny request (a few tokens) to check credentials, region and model access before a real run."""
     question = "Reply with the single word: ready"
