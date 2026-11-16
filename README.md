@@ -118,10 +118,17 @@ whenever its files change in this repository (details in [docs/technical.md](doc
 ## For developers
 
 Setup, commands, configuration and the design of each step: [docs/technical.md](docs/technical.md). How documents
-are found on hospital websites: [docs/discovery.md](docs/discovery.md). The demo front end has its own
-[README](frontend/README.md).
+are found on hospital websites: [docs/discovery.md](docs/discovery.md). How the answering prompt improved from
+version to version, and which gains are larger than the margin of error: [docs/methods.md](docs/methods.md). The
+demo front end has its own [README](frontend/README.md).
 
 ```bash
 uv sync          # install
 uv run pytest    # run the tests
 ```
+
+**Running the accuracy evaluation.** The tests above do not measure accuracy. The evaluation (`hfal ask`, then
+`hfal grade` and `hfal score`; see [docs/technical.md](docs/technical.md)) cannot run from a fresh copy of this
+repository. It needs CSSNY's hand-labeled review (not included), the downloaded hospital documents (not included)
+and model access. Re-scoring runs that already exist on a machine that has those files costs nothing, and a new run
+is billed per model call. [docs/methods.md](docs/methods.md) "How to reproduce" has the commands.
