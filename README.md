@@ -7,11 +7,9 @@ York (CSSNY), for advocates, regulators and lawmakers.
 ## Why it matters
 
 New York law requires hospitals to offer financial assistance to patients with incomes up to 400% of the federal
-poverty level, and to tell patients clearly how to get it. The law was last updated in October 2024. When CSSNY
-reviewed hospital websites by hand in September 2025, only **14 of 212 hospitals** were fully compliant, mostly
-because their websites were out of date or left out required information.
+poverty level, and to tell patients clearly how to get it. When CSSNY reviewed hospital websites by hand in September 2025, only **14 of 212 hospitals** were fully compliant, mostly because their websites were out of date or left out required information.
 
-Checking 200+ websites by hand takes weeks, and websites change. This tool does the first pass automatically, every
+Checking 200+ websites by hand takes weeks, and websites change. In addition, the law gets updated every year. This tool runs automatically, every
 month, so people can spend their time on the hospitals and questions that need a human.
 
 ## Who it is for
@@ -70,22 +68,20 @@ not the state's complete uniform application (an automatic F).
   CSSNY's review (38) or a page where nothing could be found; 11 (the NYC Health + Hospitals sites) show a "prove you
   are human" puzzle, which the tool never solves. These are left for a person rather than worked around. The 146 are
   split, at random, into 86 hospitals used to build and tune the tool and 60 held back to test it honestly later.
-  **All 146 have been checked.** The results for the 60 held-back hospitals are shown in the report, but they have
-  not yet been used for the honest accuracy test.
+  **All 146 have been checked.** The results for the 60 held-back hospitals are shown in the report.
 - **Agreement with CSSNY's review.** On 40 hospitals drawn at random, the tool's answers match CSSNY's September 2025
   answers on **79%** of the questions, and it gives the same letter grade for **28 of 40** hospitals (within one letter
-  for 33).
-- **Why the tool and CSSNY differ.** Many hospitals have updated their documents since September 2025, so some
+  for 33). Many hospitals have updated their documents since September 2025, so some
   disagreements are the website changing, not the tool erring. A person reviewed 20 disagreements drawn at random and
   found the tool right in 18. Allowing for that, the tool is right on an estimated **93%** of questions (likely range
   90% to 95%). This is an upper estimate: the answers where the tool and CSSNY agree were not re-checked.
 - **Cost.** The AI step costs about **$0.65 per hospital**. The monthly check only re-reads hospitals that changed.
 
-**See it as a dashboard:** a demo website in [`frontend/`](frontend/) shows results as a searchable table, with each
+**See it as a dashboard:** <https://aayparekh.github.io/HFAL/> shows results as a searchable table, with each
 hospital's answers, quotations and links in a side panel, charts of the grades and of the most common problems, and
 a map. It shows all 146 hospitals in the latest report, each with the date it was checked. The map also shows the
 other hospitals from CSSNY's list in gray, as "not checked" (195 of the 211 are on the map so far). It is a prototype
-and its explanations are drafts. **Open it at <https://aayparekh.github.io/HFAL/>.** It is rebuilt automatically
+and its explanations are drafts. It is rebuilt automatically
 whenever its files change in this repository (details in [docs/technical.md](docs/technical.md), "Front end").
 
 ## Reading the report
